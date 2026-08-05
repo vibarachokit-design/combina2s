@@ -486,6 +486,7 @@
         <button class="btn btn-secondary" id="modalDownloadBtn">⬇️ Descargar</button>
         <button class="btn btn-primary" id="modalShareBtn">📤 Compartir</button>
       </div>
+      <button class="btn btn-secondary" id="modalDeleteBtn" style="margin-top:10px;color:var(--danger);">🗑️ Eliminar de la galería</button>
     </div>
   </div>
 
@@ -701,6 +702,7 @@
   <script>
     // ==================== STATE ====================
     const DB_KEY = 'combina2s_gallery_v2';
+    const STICKER_SIZE = 400; // tamaño del sticker guardado (antes 512) para ahorrar espacio en localStorage
     let stream = null;
     let capturedBlob = null;
     let currentRarity = 'common';
@@ -921,14 +923,18 @@
     btnShutter.addEventListener('click', async () => {
       if (!stream || isModelLoading) return;
 
-      // Capturar frame
-      const w = video.videoWidth || 640;
-      const h = video.videoHeight || 480;
+      // Capturar frame (limitado a 720px en el lado mayor para no llenar el almacenamiento local)
+      const rawW = video.videoWidth || 640;
+      const rawH = video.videoHeight || 480;
+      const maxSide = 720;
+      const scale = Math.min(1, maxSide / Math.max(rawW, rawH));
+      const w = Math.round(rawW * scale);
+      const h = Math.round(rawH * scale);
       canvasSnap.width = w;
       canvasSnap.height = h;
       const ctx = canvasSnap.getContext('2d');
       ctx.drawImage(video, 0, 0, w, h);
-      capturedBlob = canvasSnap.toDataURL('image/jpeg', 0.9);
+      capturedBlob = canvasSnap.toDataURL('image/jpeg', 0.75);
 
       // Detener cámara y detección
       stopCamera();
@@ -960,7 +966,7 @@
     function generateSticker() {
       const img = new Image();
       img.onload = () => {
-        const size = 512;
+        const size = STICKER_SIZE;
         const c = document.getElementById('stickerCanvas');
         c.width = size; c.height = size;
         const ctx = c.getContext('2d');
@@ -1085,6 +1091,20 @@
     }
 
     // ==================== SAVE ====================
+    // Guarda la galería en localStorage de forma segura. Si el almacenamiento
+    // está lleno (QuotaExceededError), avisa con un mensaje claro en vez de
+    // fallar en silencio (que es lo que hacía que "Guardar" no hiciera nada).
+    function saveGallery(gallery) {
+      try {
+        localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+        return true;
+      } catch (err) {
+        console.error('No se pudo guardar en localStorage:', err);
+        showToast('Espacio de almacenamiento lleno. Elimina algún objeto de la galería (toca el ítem → Eliminar) e inténtalo de nuevo.', 6000);
+        return false;
+      }
+    }
+
     document.getElementById('btnSave').addEventListener('click', () => {
       const name = document.getElementById('inputName').value.trim() || 'Objeto sin nombre';
       const valueStr = document.getElementById('inputValue').value;
@@ -1108,7 +1128,7 @@
 
       const gallery = getGallery();
       gallery.unshift(item);
-      localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+      if (!saveGallery(gallery)) return;
 
       updateTotalValue();
       showToast(`¡${name} guardado!`);
@@ -1136,14 +1156,14 @@
         type: 'brainroot',
         parents: [itemA.id, itemB.id],
         image: stickerData,
-        original: stickerData,
+        original: null,
         created: new Date().toISOString()
       };
 
       // Los 2 objetos originales se conservan; solo se agrega el Brainroot
       const gallery = getGallery();
       gallery.unshift(newItem);
-      localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+      if (!saveGallery(gallery)) return;
 
       updateTotalValue();
       showToast(`¡${name} creado! Tus 2 objetos originales siguen en la galería. 🧬`);
@@ -1282,6 +1302,20 @@
     document.getElementById('modalShareBtn').addEventListener('click', () => {
       if (!modalItem) return;
       shareImageDataUrl(modalItem.image, sanitizeFilename(modalItem.name) + '.png', modalItem.name);
+    });
+
+    document.getElementById('modalDeleteBtn').addEventListener('click', () => {
+      if (!modalItem) return;
+      const ok = confirm(`¿Eliminar "${modalItem.name}" de tu galería? Esta acción no se puede deshacer.`);
+      if (!ok) return;
+
+      const gallery = getGallery().filter(i => i.id !== modalItem.id);
+      if (!saveGallery(gallery)) return;
+
+      showToast(`"${modalItem.name}" eliminado`);
+      closeItemModal();
+      updateTotalValue();
+      renderGallery();
     });
 
     // ==================== COMPARTIR / DESCARGAR ====================
@@ -1531,7 +1565,7 @@
           loaded++;
           if (loaded < 2) return;
 
-          const size = 512;
+          const size = STICKER_SIZE;
           const c = document.getElementById('fusionCanvas');
           c.width = size; c.height = size;
           const ctx = c.getContext('2d');
@@ -1683,7 +1717,7 @@
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.onload = () => {
-          const size = 512;
+          const size = STICKER_SIZE;
           const c = document.getElementById('fusionCanvas');
           c.width = size; c.height = size;
           const ctx = c.getContext('2d');
