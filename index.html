@@ -547,15 +547,23 @@
 
         <div id="hfSettingsForm">
           <div class="form-group" style="margin:10px 0;">
+            <label style="font-size:0.7rem;">Token de acceso</label>
             <input type="text" id="hfTokenInput" placeholder="Pega tu token gratuito (hf_...)">
           </div>
-          <button class="btn btn-secondary" id="btnSaveHfToken" style="margin-top:0;">Guardar token</button>
-          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Consíguelo gratis en huggingface.co/settings/tokens. Sin token, se usa el modo cómico local (sin internet).</p>
+          <div class="form-group" style="margin:10px 0;">
+            <label style="font-size:0.7rem;">Modelo (opcional, avanzado)</label>
+            <input type="text" id="hfModelInput" placeholder="Qwen/Qwen-Image-Edit">
+          </div>
+          <button class="btn btn-secondary" id="btnSaveHfToken" style="margin-top:0;">Guardar</button>
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Consíguelo gratis en huggingface.co/settings/tokens. Sin token, se usa el modo cómico local (sin internet). Si un modelo falla, prueba con otro compatible con "image-to-image" en Hugging Face.</p>
         </div>
 
-        <div id="hfSettingsSaved" class="hidden" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span style="font-size:0.8rem;color:var(--accent);">✓ Token guardado — se usará IA real</span>
-          <button class="btn btn-secondary" id="btnEditHfToken" style="width:auto;margin:0;padding:8px 14px;font-size:0.75rem;">Cambiar</button>
+        <div id="hfSettingsSaved" class="hidden" style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span style="font-size:0.8rem;color:var(--accent);">✓ Token guardado — se usará IA real</span>
+            <button class="btn btn-secondary" id="btnEditHfToken" style="width:auto;margin:0;padding:8px 14px;font-size:0.75rem;">Cambiar</button>
+          </div>
+          <span style="font-size:0.7rem;color:var(--text-dim);" id="hfModelLabel"></span>
         </div>
       </div>
 
@@ -662,7 +670,7 @@
     // IA de caricaturización (Hugging Face Inference Providers)
     const HF_TOKEN_KEY = 'combina2s_hf_token';
     const HF_MODEL_KEY = 'combina2s_hf_model';
-    const DEFAULT_HF_MODEL = 'timbrooks/instruct-pix2pix';
+    const DEFAULT_HF_MODEL = 'Qwen/Qwen-Image-Edit';
     function getHfToken() { return (localStorage.getItem(HF_TOKEN_KEY) || '').trim(); }
     function getHfModel() { return localStorage.getItem(HF_MODEL_KEY) || DEFAULT_HF_MODEL; }
 
@@ -1102,12 +1110,21 @@
       const val = document.getElementById('hfTokenInput').value.trim();
       if (!val) { showToast('Pega un token válido'); return; }
       localStorage.setItem(HF_TOKEN_KEY, val);
-      showToast('Token guardado. Se usará IA real en la próxima fusión.');
+
+      const modelVal = document.getElementById('hfModelInput').value.trim();
+      if (modelVal) {
+        localStorage.setItem(HF_MODEL_KEY, modelVal);
+      } else {
+        localStorage.removeItem(HF_MODEL_KEY);
+      }
+
+      showToast('Guardado. Se usará IA real en la próxima fusión.');
       refreshHfSettingsUI();
     });
 
     document.getElementById('btnEditHfToken').addEventListener('click', () => {
       document.getElementById('hfTokenInput').value = getHfToken();
+      document.getElementById('hfModelInput').value = localStorage.getItem(HF_MODEL_KEY) || '';
       refreshHfSettingsUI(true);
     });
 
@@ -1250,6 +1267,12 @@
       if (!form || !saved) return;
       form.classList.toggle('hidden', hasToken);
       saved.classList.toggle('hidden', !hasToken);
+      const modelLabel = document.getElementById('hfModelLabel');
+      if (modelLabel) modelLabel.textContent = 'Modelo: ' + getHfModel();
+      if (!hasToken) {
+        const modelInput = document.getElementById('hfModelInput');
+        if (modelInput && !modelInput.value) modelInput.placeholder = DEFAULT_HF_MODEL;
+      }
     }
 
     async function runFusion(itemA, itemB) {
@@ -1267,12 +1290,13 @@
       // 2) Si hay token de Hugging Face, intentar mejorar con IA real (caricatura)
       if (getHfToken()) {
         document.getElementById('fusionDetected').textContent = '🤖 Generando caricatura con IA...';
-        const aiBlob = await aiCartoonizeFusion(itemA, itemB);
+        const { blob: aiBlob, error: aiError } = await aiCartoonizeFusion(itemA, itemB);
         if (aiBlob) {
           await drawBlobToFusionCanvas(aiBlob);
           showToast('¡Caricatura generada con IA! 🎨');
         } else {
-          showToast('La IA no respondió — se usó el modo cómico local');
+          console.warn('Detalle del error de IA:', aiError);
+          showToast('IA falló: ' + (aiError || 'error desconocido') + ' — se usó el modo local', 6000);
         }
       }
 
@@ -1495,7 +1519,7 @@
     // funcionando con la versión cómica local generada por Canvas.
     async function aiCartoonizeFusion(itemA, itemB) {
       const token = getHfToken();
-      if (!token) return null;
+      if (!token) return { blob: null, error: 'Sin token configurado' };
 
       try {
         const refBlob = await buildReferenceComposite(itemA, itemB);
@@ -1513,10 +1537,17 @@
           model: getHfModel()
         });
 
-        return resultBlob;
+        if (!resultBlob) return { blob: null, error: 'El proveedor no devolvió una imagen' };
+        return { blob: resultBlob, error: null };
       } catch (err) {
-        console.error('Fusión con IA falló:', err);
-        return null;
+        console.error('Fusión con IA falló (detalle completo):', err);
+        let msg = err && err.message ? err.message : String(err);
+        if (err && err.response) {
+          try {
+            msg += ` [HTTP ${err.response.status || '?'}]`;
+          } catch (e) {}
+        }
+        return { blob: null, error: msg };
       }
     }
 
@@ -1618,11 +1649,12 @@
     }
 
     // ==================== UTILS ====================
-    function showToast(msg) {
+    function showToast(msg, duration) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 3000);
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.classList.remove('show'), duration || 3000);
     }
 
     // ==================== INIT ====================
