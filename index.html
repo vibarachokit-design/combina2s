@@ -4,10 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f0f23">
-  <title>Combina2s — IA Sticker + Fusion</title>
+  <title>Combina2s</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.2/dist/background-removal.umd.js"></script>
   <style>
     :root {
       --bg: #0f0f23;
@@ -22,17 +21,13 @@
       --radius: 16px;
       --shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
-
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      overflow-x: hidden;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
     }
-
     .screen { display: none; min-height: 100vh; padding: 20px; padding-bottom: 100px; animation: fadeIn 0.3s ease; }
     .screen.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -40,8 +35,7 @@
     .app-header {
       position: fixed; top: 0; left: 0; right: 0;
       background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
-      padding: 16px 20px;
-      z-index: 100;
+      padding: 16px 20px; z-index: 100;
       display: flex; justify-content: space-between; align-items: center;
     }
     .app-title {
@@ -50,19 +44,14 @@
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
     .coins-badge {
-      background: var(--surface-light);
-      border: 1px solid var(--gold);
-      color: var(--gold);
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-weight: 700;
-      font-size: 0.9rem;
+      background: var(--surface-light); border: 1px solid var(--gold);
+      color: var(--gold); padding: 6px 14px; border-radius: 20px;
+      font-weight: 700; font-size: 0.9rem;
     }
 
     .bottom-nav {
       position: fixed; bottom: 0; left: 0; right: 0;
-      background: var(--surface);
-      border-top: 1px solid #333;
+      background: var(--surface); border-top: 1px solid #333;
       display: flex; justify-content: space-around;
       padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
       z-index: 100;
@@ -76,96 +65,64 @@
     .nav-btn.active { color: var(--accent); }
     .nav-btn svg { width: 24px; height: 24px; }
 
-    /* ===== CÁMARA ===== */
+    /* CÁMARA */
     .camera-wrap {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 3/4;
-      background: #000;
-      border-radius: var(--radius);
-      overflow: hidden;
-      margin-top: 60px;
-      box-shadow: var(--shadow);
+      position: relative; width: 100%; aspect-ratio: 3/4;
+      background: #000; border-radius: var(--radius);
+      overflow: hidden; margin-top: 60px; box-shadow: var(--shadow);
     }
     .camera-wrap video, .camera-wrap canvas {
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
     }
     #overlayCanvas { pointer-events: none; z-index: 5; }
     .camera-hint {
       position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7);
-      padding: 8px 16px; border-radius: 20px;
-      font-size: 0.8rem; color: var(--text-dim);
-      z-index: 6; white-space: nowrap;
+      background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 20px;
+      font-size: 0.8rem; color: var(--text-dim); z-index: 6; white-space: nowrap;
     }
     .shutter-btn {
       position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-      width: 72px; height: 72px;
-      border-radius: 50%;
-      background: var(--accent);
-      border: 4px solid var(--bg);
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--accent); border: 4px solid var(--bg);
       box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow);
-      cursor: pointer;
-      z-index: 90;
-      transition: transform 0.1s;
+      cursor: pointer; z-index: 90; transition: transform 0.1s;
     }
     .shutter-btn:active { transform: translateX(-50%) scale(0.92); }
-    .shutter-btn:disabled {
-      background: #555; cursor: not-allowed; box-shadow: none;
-    }
+    .shutter-btn:disabled { background: #555; cursor: not-allowed; box-shadow: none; }
 
-    /* ===== EDITOR ===== */
+    /* EDITOR */
     .editor-stage {
-      width: 100%; max-width: 360px;
-      aspect-ratio: 1;
-      margin: 60px auto 20px;
-      position: relative;
+      width: 100%; max-width: 360px; aspect-ratio: 1;
+      margin: 60px auto 20px; position: relative;
       background: repeating-conic-gradient(#1a1a2e 0% 25%, #252540 0% 50%) 50% / 20px 20px;
-      border-radius: var(--radius);
-      overflow: hidden;
-      box-shadow: var(--shadow);
+      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
     }
-    .editor-stage canvas {
-      width: 100%; height: 100%;
-    }
+    .editor-stage canvas { width: 100%; height: 100%; }
     .editor-frame {
-      position: absolute; inset: 0;
-      border: 3px dashed var(--accent);
-      border-radius: var(--radius);
-      pointer-events: none;
-      z-index: 2;
+      position: absolute; inset: 0; border: 3px dashed var(--accent);
+      border-radius: var(--radius); pointer-events: none; z-index: 2;
     }
-    .editor-controls {
-      max-width: 360px; margin: 0 auto;
-    }
-    .slider-group {
-      margin: 12px 0;
-    }
+    .editor-controls { max-width: 360px; margin: 0 auto; }
+    .slider-group { margin: 12px 0; }
     .slider-group label {
       display: flex; justify-content: space-between;
       font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px;
     }
     .slider-group input[type="range"] {
-      width: 100%;
-      -webkit-appearance: none; appearance: none;
-      height: 6px; border-radius: 3px;
-      background: var(--surface-light);
-      outline: none;
+      width: 100%; -webkit-appearance: none; appearance: none;
+      height: 6px; border-radius: 3px; background: var(--surface-light); outline: none;
     }
     .slider-group input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
-      width: 20px; height: 20px; border-radius: 50%;
-      background: var(--accent); cursor: pointer;
+      width: 20px; height: 20px; border-radius: 50%; background: var(--accent); cursor: pointer;
     }
 
-    /* ===== PREVIEW ===== */
+    /* PREVIEW */
     .preview-container { margin-top: 60px; text-align: center; }
     .sticker-preview {
-      width: 260px; height: 260px;
-      margin: 20px auto;
-      position: relative;
+      width: 260px; height: 260px; margin: 20px auto; position: relative;
+      background: repeating-conic-gradient(#1a1a2e 0% 25%, #252540 0% 50%) 50% / 20px 20px;
+      border-radius: var(--radius);
     }
     .sticker-preview canvas {
       width: 100%; height: 100%;
@@ -173,24 +130,17 @@
     }
     .sticker-badge {
       position: absolute; top: -10px; right: -10px;
-      padding: 6px 12px;
-      border-radius: 12px;
+      padding: 6px 12px; border-radius: 12px;
       font-size: 0.75rem; font-weight: 700;
-      transform: rotate(12deg);
-      box-shadow: var(--shadow);
+      transform: rotate(12deg); box-shadow: var(--shadow);
     }
     .ia-detected {
-      background: var(--surface);
-      border: 1px solid var(--accent-dim);
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin: 12px 0;
-      text-align: left;
+      background: var(--surface); border: 1px solid var(--accent-dim);
+      border-radius: 12px; padding: 12px 16px; margin: 12px 0; text-align: left;
     }
     .ia-detected .label {
-      font-size: 0.7rem; color: var(--accent);
-      text-transform: uppercase; font-weight: 700;
-      letter-spacing: 0.5px; margin-bottom: 4px;
+      font-size: 0.7rem; color: var(--accent); text-transform: uppercase;
+      font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px;
     }
     .ia-detected .value { font-size: 1.05rem; font-weight: 700; }
 
@@ -200,62 +150,46 @@
       font-size: 0.85rem; color: var(--text-dim); font-weight: 600;
     }
     .form-group input, .form-group select {
-      width: 100%; padding: 14px 16px;
-      border-radius: 12px; border: 1px solid var(--surface-light);
-      background: var(--surface); color: var(--text);
-      font-size: 1rem; outline: none;
+      width: 100%; padding: 14px 16px; border-radius: 12px;
+      border: 1px solid var(--surface-light); background: var(--surface);
+      color: var(--text); font-size: 1rem; outline: none;
     }
     .form-group input:focus { border-color: var(--accent); }
 
     .btn {
-      width: 100%; padding: 16px;
-      border-radius: 12px; border: none;
-      font-size: 1rem; font-weight: 700;
-      cursor: pointer; transition: all 0.2s; margin-top: 8px;
+      width: 100%; padding: 16px; border-radius: 12px; border: none;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: all 0.2s; margin-top: 8px;
     }
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent), #00b894);
-      color: var(--bg);
+      background: linear-gradient(135deg, var(--accent), #00b894); color: var(--bg);
     }
     .btn-primary:active { opacity: 0.9; transform: scale(0.98); }
     .btn-primary:disabled { background: #2a4a40; color: #668; cursor: not-allowed; }
     .btn-secondary { background: var(--surface-light); color: var(--text); }
-    .btn-danger { background: var(--danger); color: white; }
     .btn-gold {
-      background: linear-gradient(135deg, var(--gold), #e6c200);
-      color: #1a1500;
+      background: linear-gradient(135deg, var(--gold), #e6c200); color: #1a1500;
     }
     .btn-row { display: flex; gap: 12px; margin-top: 16px; }
     .btn-row .btn { flex: 1; margin-top: 0; }
 
-    /* ===== GALERÍA ===== */
+    /* GALERÍA */
     .gallery-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-      margin-top: 60px;
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 14px; margin-top: 60px;
     }
     .gallery-item {
-      background: var(--surface);
-      border-radius: var(--radius);
-      overflow: hidden;
-      position: relative;
-      aspect-ratio: 1;
-      box-shadow: var(--shadow);
-      transition: transform 0.2s;
-      cursor: pointer;
+      background: var(--surface); border-radius: var(--radius);
+      overflow: hidden; position: relative; aspect-ratio: 1;
+      box-shadow: var(--shadow); transition: transform 0.2s; cursor: pointer;
     }
     .gallery-item:active { transform: scale(0.96); }
-    .gallery-item img {
-      width: 100%; height: 100%; object-fit: cover;
-    }
+    .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
     .gallery-type {
       position: absolute; top: 8px; left: 8px;
-      background: rgba(0,0,0,0.6);
-      color: var(--accent);
-      font-size: 0.65rem; font-weight: 700;
-      padding: 3px 8px; border-radius: 8px;
-      text-transform: uppercase;
+      background: rgba(0,0,0,0.6); color: var(--accent);
+      font-size: 0.65rem; font-weight: 700; padding: 3px 8px;
+      border-radius: 8px; text-transform: uppercase;
     }
     .gallery-rarity {
       position: absolute; top: 8px; right: 8px;
@@ -267,106 +201,65 @@
     .rarity-legendary { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
     .gallery-info {
       position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.9));
-      padding: 12px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9)); padding: 12px;
     }
     .gallery-name { font-size: 0.8rem; font-weight: 700; }
     .gallery-value { font-size: 0.7rem; color: var(--gold); font-weight: 600; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
 
-    .empty-state {
-      text-align: center; padding: 60px 20px; color: var(--text-dim);
-    }
-
-    /* ===== COMBINAR ===== */
+    /* COMBINAR */
     .combine-pick {
-      display: grid;
-      grid-template-columns: 1fr 40px 1fr;
-      align-items: center;
-      gap: 8px;
-      margin: 20px 0;
+      display: grid; grid-template-columns: 1fr 40px 1fr;
+      align-items: center; gap: 8px; margin: 20px 0;
     }
     .combine-slot {
-      aspect-ratio: 1;
-      background: var(--surface);
-      border-radius: var(--radius);
-      border: 2px dashed var(--surface-light);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      cursor: pointer;
-      overflow: hidden;
-      position: relative;
+      aspect-ratio: 1; background: var(--surface); border-radius: var(--radius);
+      border: 2px dashed var(--surface-light); display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; overflow: hidden; position: relative;
     }
     .combine-slot.filled { border-style: solid; border-color: var(--accent); }
     .combine-slot img { width: 100%; height: 100%; object-fit: cover; }
     .combine-slot .slot-label {
-      font-size: 0.75rem; color: var(--text-dim);
-      text-align: center; padding: 8px;
+      font-size: 0.75rem; color: var(--text-dim); text-align: center; padding: 8px;
     }
-    .combine-plus {
-      text-align: center; font-size: 1.5rem; color: var(--accent);
-      font-weight: 700;
-    }
+    .combine-plus { text-align: center; font-size: 1.5rem; color: var(--accent); font-weight: 700; }
     .brainroot-preview {
-      width: 240px; height: 240px;
-      margin: 20px auto;
-      position: relative;
+      width: 240px; height: 240px; margin: 20px auto; position: relative;
     }
     .brainroot-preview img, .brainroot-preview canvas {
-      width: 100%; height: 100%;
-      border-radius: var(--radius);
-      object-fit: cover;
-      filter: drop-shadow(0 8px 24px rgba(0,212,170,0.3));
+      width: 100%; height: 100%; border-radius: var(--radius);
+      object-fit: cover; filter: drop-shadow(0 8px 24px rgba(0,212,170,0.3));
     }
     .brainroot-glow {
-      position: absolute; inset: -20px;
-      border-radius: 50%;
+      position: absolute; inset: -20px; border-radius: 50%;
       background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
-      pointer-events: none;
-      animation: breathe 3s ease-in-out infinite;
+      pointer-events: none; animation: breathe 3s ease-in-out infinite;
     }
     @keyframes breathe { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
-
     .recipe-hint {
-      background: var(--surface);
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 0.8rem;
-      color: var(--text-dim);
-      margin-top: 12px;
+      background: var(--surface); border-radius: 12px; padding: 12px;
+      font-size: 0.8rem; color: var(--text-dim); margin-top: 12px;
     }
 
-    /* ===== COMBATE ===== */
+    /* COMBATE */
     .battle-card {
-      background: var(--surface);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin: 12px 0;
-      border: 1px solid var(--surface-light);
+      background: var(--surface); border-radius: var(--radius);
+      padding: 20px; margin: 12px 0; border: 1px solid var(--surface-light);
     }
-    .battle-opponent {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 12px;
-    }
+    .battle-opponent { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
     .battle-avatar {
-      width: 48px; height: 48px; border-radius: 50%;
-      background: var(--surface-light);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.5rem;
+      width: 48px; height: 48px; border-radius: 50%; background: var(--surface-light);
+      display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
     }
-    .battle-status {
-      font-size: 0.8rem; color: var(--accent);
-      margin-top: 4px;
-    }
+    .battle-status { font-size: 0.8rem; color: var(--accent); margin-top: 4px; }
     .turn-indicator {
-      display: inline-block;
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent);
-      margin-right: 6px;
-      animation: pulse 1.5s infinite;
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); margin-right: 6px; animation: pulse 1.5s infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-    /* ===== UTILS ===== */
+    /* UTILS */
     .hidden { display: none !important; }
     .loading {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -374,46 +267,30 @@
       z-index: 200;
     }
     .spinner {
-      width: 48px; height: 48px;
-      border: 3px solid var(--surface-light);
-      border-top-color: var(--accent);
-      border-radius: 50%;
+      width: 48px; height: 48px; border: 3px solid var(--surface-light);
+      border-top-color: var(--accent); border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .toast {
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      background: var(--surface); color: var(--text);
-      padding: 12px 24px; border-radius: 12px;
-      border: 1px solid var(--accent);
-      z-index: 300; transition: transform 0.3s ease;
-      font-size: 0.9rem; font-weight: 600;
+      background: var(--surface); color: var(--text); padding: 12px 24px;
+      border-radius: 12px; border: 1px solid var(--accent); z-index: 300;
+      transition: transform 0.3s ease; font-size: 0.9rem; font-weight: 600;
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
-
     .model-status {
       position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
-      background: var(--surface);
-      border: 1px solid var(--accent-dim);
-      color: var(--accent);
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      z-index: 95;
-      display: flex; align-items: center; gap: 8px;
+      background: var(--surface); border: 1px solid var(--accent-dim);
+      color: var(--accent); padding: 6px 16px; border-radius: 20px;
+      font-size: 0.75rem; z-index: 95; display: flex; align-items: center; gap: 8px;
     }
     .model-status .dot {
       width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.5s infinite;
+      background: var(--accent); animation: pulse 1.5s infinite;
     }
     .model-status.ready .dot { background: #2ecc71; animation: none; }
-
-    .section-title {
-      margin-top: 60px; margin-bottom: 16px;
-      font-size: 1.3rem; font-weight: 700;
-    }
-
+    .section-title { margin-top: 60px; margin-bottom: 16px; font-size: 1.3rem; font-weight: 700; }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--surface-light); border-radius: 3px; }
@@ -437,7 +314,7 @@
     <p style="margin-top:16px;color:var(--text-dim);font-size:0.9rem;" id="loadingText">Procesando...</p>
   </div>
 
-  <!-- ===== CÁMARA ===== -->
+  <!-- CÁMARA -->
   <div class="screen active" id="screen-camera">
     <div class="camera-wrap" id="cameraWrap">
       <video id="video" autoplay playsinline muted></video>
@@ -448,7 +325,7 @@
     <canvas id="canvas-snap" style="display:none"></canvas>
   </div>
 
-  <!-- ===== EDITOR ===== -->
+  <!-- EDITOR -->
   <div class="screen" id="screen-editor">
     <h2 class="section-title" style="text-align:center;">✏️ Ajustar Sticker</h2>
     <div class="editor-stage" id="editorStage">
@@ -458,7 +335,7 @@
     <div class="editor-controls">
       <div class="slider-group">
         <label><span>Zoom</span><span id="zoomVal">1.0x</span></label>
-        <input type="range" id="zoomSlider" min="0.5" max="2.0" step="0.05" value="1.0">
+        <input type="range" id="zoomSlider" min="0.5" max="2.5" step="0.05" value="1.0">
       </div>
       <div class="slider-group">
         <label><span>Rotación</span><span id="rotVal">0°</span></label>
@@ -478,7 +355,7 @@
     </div>
   </div>
 
-  <!-- ===== PREVIEW ===== -->
+  <!-- PREVIEW -->
   <div class="screen" id="screen-preview">
     <div class="preview-container">
       <div class="sticker-preview">
@@ -510,12 +387,12 @@
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="goTo('editor')">← Editar</button>
-        <button class="btn btn-primary" id="btnSave">💾 Guardar</button>
+        <button class="btn btn-primary" id="btnSave">💾 Guardar en Galería</button>
       </div>
     </div>
   </div>
 
-  <!-- ===== GALERÍA ===== -->
+  <!-- GALERÍA -->
   <div class="screen" id="screen-gallery">
     <h2 class="section-title">Tu Colección</h2>
     <div class="gallery-grid" id="galleryGrid"></div>
@@ -526,13 +403,12 @@
     </div>
   </div>
 
-  <!-- ===== COMBINAR ===== -->
+  <!-- COMBINAR -->
   <div class="screen" id="screen-combine">
     <h2 class="section-title">⚡ Crear Brainroot</h2>
     <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;">
       Selecciona 2 objetos. La IA generará una fusión divertida.
     </p>
-
     <div class="combine-pick" id="combinePick">
       <div class="combine-slot" id="slotA" onclick="openPicker('A')">
         <span class="slot-label">Toca para seleccionar objeto 1</span>
@@ -542,7 +418,6 @@
         <span class="slot-label">Toca para seleccionar objeto 2</span>
       </div>
     </div>
-
     <div id="fusionResult" class="hidden">
       <div class="brainroot-preview">
         <div class="brainroot-glow"></div>
@@ -559,19 +434,17 @@
     </div>
   </div>
 
-  <!-- ===== PICKER ===== -->
+  <!-- PICKER -->
   <div class="screen" id="screen-picker" style="background:var(--bg);z-index:150;">
     <h2 class="section-title">Selecciona un objeto</h2>
     <div class="gallery-grid" id="pickerGrid"></div>
     <button class="btn btn-secondary" style="margin-top:20px;" onclick="closePicker()">Cancelar</button>
   </div>
 
-  <!-- ===== COMBATE ===== -->
+  <!-- COMBATE -->
   <div class="screen" id="screen-battle">
     <h2 class="section-title">Combates</h2>
-    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:20px;">
-      Turnos por notificación.
-    </p>
+    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:20px;">Turnos por notificación.</p>
     <div class="battle-card">
       <div class="battle-opponent">
         <div class="battle-avatar">🥊</div>
@@ -583,13 +456,13 @@
       <button class="btn btn-primary" onclick="requestBattle()">Buscar combate</button>
     </div>
     <div style="margin-top:24px;padding:16px;background:var(--surface);border-radius:var(--radius);border:1px dashed var(--surface-light);">
-      <p style="font-size:0.85rem;color:var(--text-dim);">
+      <p style="font-size:0.85rem;color:var(--text-dim;">
         💡 <strong>Próximamente:</strong> enfrenta tus Brainroots contra otros jugadores.
       </p>
     </div>
   </div>
 
-  <!-- ===== NAV ===== -->
+  <!-- NAV -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-screen="camera" onclick="goTo('camera')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
@@ -611,22 +484,21 @@
 
   <script>
     // ==================== STATE ====================
-    const DB_KEY = 'combina2s_gallery_v4';
+    const DB_KEY = 'combina2s_v5';
     let stream = null;
     let model = null;
     let isModelLoading = true;
     let detectedLabel = '';
     let detectionConfidence = 0;
     let capturedBlob = null;
-    let currentRarity = null;
+    let currentRarity = RARITY_TABLE[0];
     let editorImage = null;
     let editorTransform = { zoom: 1, rot: 0, panX: 0, panY: 0, bright: 0 };
     let isDragging = false;
     let dragStart = { x: 0, y: 0 };
-    let selectedSlot = null;
     let slotA = null;
     let slotB = null;
-    let removedImageBlob = null; // transparent PNG from background removal
+    let lastDetection = null; // guarda bbox de la última detección
 
     const LABEL_ES = {
       person:'Persona',bicycle:'Bicicleta',car:'Auto',motorcycle:'Moto',airplane:'Avión',bus:'Bus',train:'Tren',truck:'Camión',boat:'Bote',
@@ -693,14 +565,11 @@
       if(!model || !stream) return;
       const video = document.getElementById('video');
       const canvas = document.getElementById('overlayCanvas');
-      if(video.readyState < 2) {
-        requestAnimationFrame(startDetectionLoop);
-        return;
-      }
+      if(video.readyState < 2) { requestAnimationFrame(startDetectionLoop); return; }
+
       const wrap = document.getElementById('cameraWrap');
       if(canvas.width !== wrap.clientWidth || canvas.height !== wrap.clientHeight) {
-        canvas.width = wrap.clientWidth;
-        canvas.height = wrap.clientHeight;
+        canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight;
       }
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -709,6 +578,7 @@
         lastDetect = Date.now();
         try {
           const preds = await model.detect(video);
+          lastDetection = preds.sort((a,b)=>b.score-a.score)[0] || null;
           drawOverlay(preds);
         } catch(e){}
       }
@@ -736,7 +606,7 @@
       }
 
       const best = predictions.sort((a,b)=>b.score-a.score)[0];
-      if(best.score < 0.35) {
+      if(best.score < 0.30) {
         document.getElementById('cameraHint').textContent = 'Acércate más al objeto...';
         return;
       }
@@ -748,10 +618,8 @@
       const bh = h * sy;
 
       ctx.save();
-      ctx.shadowColor = 'rgba(0,212,170,0.6)';
-      ctx.shadowBlur = 15;
-      ctx.strokeStyle = '#00d4aa';
-      ctx.lineWidth = 3;
+      ctx.shadowColor = 'rgba(0,212,170,0.6)'; ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 3;
       ctx.strokeRect(bx, by, bw, bh);
       ctx.restore();
 
@@ -782,7 +650,7 @@
       if(screenName==='camera'){ startCamera(); if(model && !isModelLoading) startDetectionLoop(); }
       if(screenName==='gallery') renderGallery();
       if(screenName==='combine') renderCombine();
-      if(screenName!=='camera'){ stopCamera(); }
+      if(screenName!=='camera') stopCamera();
     }
 
     // ==================== CAMERA ====================
@@ -794,9 +662,7 @@
         });
         document.getElementById('video').srcObject = stream;
         document.getElementById('btnShutter').disabled = isModelLoading;
-      } catch(err){
-        showToast('No se pudo acceder a la cámara');
-      }
+      } catch(err){ showToast('No se pudo acceder a la cámara'); }
     }
     function stopCamera(){
       if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; document.getElementById('video').srcObject=null; }
@@ -804,44 +670,41 @@
 
     document.getElementById('btnShutter').addEventListener('click', async ()=>{
       if(!stream || isModelLoading) return;
+
       const video = document.getElementById('video');
       const c = document.getElementById('canvas-snap');
       c.width = video.videoWidth || 640;
       c.height = video.videoHeight || 480;
       c.getContext('2d').drawImage(video,0,0,c.width,c.height);
-      capturedBlob = c.toDataURL('image/jpeg',0.92);
 
       stopCamera();
+
+      // Detectar en la foto capturada
       const preds = await model.detect(c);
       const best = preds.sort((a,b)=>b.score-a.score)[0];
-      if(best && best.score > 0.25){
+
+      if(best && best.score > 0.25) {
         detectedLabel = best.class;
         detectionConfidence = best.score;
+        // RECORTAR AUTOMÁTICAMENTE al bounding box detectado
+        const [x, y, w, h] = best.bbox;
+        const pad = Math.min(w, h) * 0.15; // 15% padding
+        const rx = Math.max(0, x - pad);
+        const ry = Math.max(0, y - pad);
+        const rw = Math.min(c.width - rx, w + pad*2);
+        const rh = Math.min(c.height - ry, h + pad*2);
+
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = rw; cropCanvas.height = rh;
+        cropCanvas.getContext('2d').drawImage(c, rx, ry, rw, rh, 0, 0, rw, rh);
+        capturedBlob = cropCanvas.toDataURL('image/jpeg', 0.92);
       } else {
         detectedLabel = 'unknown';
         detectionConfidence = 0;
+        capturedBlob = c.toDataURL('image/jpeg', 0.92); // imagen completa como fallback
       }
 
-      // REMOVER FONDO AUTOMÁTICAMENTE
-      document.getElementById('loading').classList.remove('hidden');
-      document.getElementById('loadingText').textContent = '✂️ Recortando objeto con IA...';
-      try {
-        const blob = await (await fetch(capturedBlob)).blob();
-        const config = {
-          publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.2/dist/',
-          progress: (p) => {
-            document.getElementById('loadingText').textContent = `✂️ Recortando... ${Math.round(p*100)}%`;
-          }
-        };
-        const removedBlob = await backgroundRemoval.removeBackground(blob, config);
-        removedImageBlob = URL.createObjectURL(removedBlob);
-        initEditor();
-      } catch(err) {
-        console.error('Background removal failed:', err);
-        removedImageBlob = capturedBlob; // fallback
-        showToast('No se pudo recortar el fondo. Usando imagen original.');
-        initEditor();
-      }
+      initEditor();
     });
 
     // ==================== EDITOR ====================
@@ -854,15 +717,10 @@
 
       editorImage = new Image();
       editorImage.onload = () => {
-        document.getElementById('loading').classList.add('hidden');
         renderEditor();
         goTo('editor');
       };
-      editorImage.onerror = () => {
-        document.getElementById('loading').classList.add('hidden');
-        showToast('Error cargando imagen');
-      };
-      editorImage.src = removedImageBlob;
+      editorImage.src = capturedBlob;
     }
 
     function renderEditor() {
@@ -931,9 +789,7 @@
     });
     window.addEventListener('mouseup', ()=>isDragging=false);
 
-    document.getElementById('btnEditorConfirm').addEventListener('click', ()=>{
-      generateFinalSticker();
-    });
+    document.getElementById('btnEditorConfirm').addEventListener('click', generateFinalSticker);
 
     // ==================== FINAL STICKER ====================
     function generateFinalSticker() {
@@ -941,8 +797,11 @@
       const c = document.getElementById('stickerCanvas');
       c.width = size; c.height = size;
       const ctx = c.getContext('2d');
+
+      // Fondo transparente
       ctx.clearRect(0,0,size,size);
 
+      // Clip redondeado
       const r = 60;
       ctx.beginPath();
       ctx.moveTo(r,0); ctx.lineTo(size-r,0);
@@ -950,8 +809,10 @@
       ctx.lineTo(size,size-r); ctx.quadraticCurveTo(size,size,size-r,size);
       ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
       ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
-      ctx.closePath(); ctx.save(); ctx.clip();
+      ctx.closePath();
+      ctx.save(); ctx.clip();
 
+      // Dibujar imagen transformada
       const ir = editorImage.width / editorImage.height;
       let baseW, baseH;
       if(ir > 1) { baseH = size; baseW = size * ir; }
@@ -964,19 +825,36 @@
       if(editorTransform.bright !== 0) ctx.filter = `brightness(${100+editorTransform.bright}%)`;
       ctx.drawImage(editorImage, -baseW/2, -baseH/2, baseW, baseH);
       ctx.restore();
+      ctx.restore(); // restore clip
+
+      // CONTORNO BLANCO + SOMBRA EXTERNA
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 12;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 20;
+      ctx.lineJoin = 'round';
+      // Redibujar el path para el borde
+      ctx.beginPath();
+      ctx.moveTo(r,0); ctx.lineTo(size-r,0);
+      ctx.quadraticCurveTo(size,0,size,r);
+      ctx.lineTo(size,size-r); ctx.quadraticCurveTo(size,size,size-r,size);
+      ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
+      ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
+      ctx.closePath();
+      ctx.stroke();
       ctx.restore();
 
-      ctx.save();
-      ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=20; ctx.shadowOffsetY=8;
-      ctx.strokeStyle='#fff'; ctx.lineWidth=16;
-      ctx.stroke(); ctx.restore();
-
+      // Brillo sutil
       const grad = ctx.createLinearGradient(0,0,size,size);
-      grad.addColorStop(0,'rgba(255,255,255,0.15)');
+      grad.addColorStop(0,'rgba(255,255,255,0.12)');
       grad.addColorStop(0.5,'rgba(255,255,255,0)');
       grad.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.fillStyle=grad; ctx.fill();
+      ctx.fillStyle = grad;
+      ctx.fill();
 
+      // Metadata
       currentRarity = rollRarity();
       const category = inferCategory(detectedLabel);
       document.getElementById('inputCategory').value = category;
@@ -1030,42 +908,80 @@
       return map[name]||'#888';
     }
 
-    // ==================== SAVE ====================
-    document.getElementById('btnSave').addEventListener('click',()=>{
-      const name=document.getElementById('inputName').value.trim()||'Objeto sin nombre';
-      const valueStr=document.getElementById('inputValue').value;
-      const category=document.getElementById('inputCategory').value;
-      const stickerData=document.getElementById('stickerCanvas').toDataURL('image/png');
+    // ==================== SAVE (CORREGIDO) ====================
+    document.getElementById('btnSave').addEventListener('click', function saveItem(){
+      try {
+        const name = document.getElementById('inputName').value.trim() || 'Objeto sin nombre';
+        const valueStr = document.getElementById('inputValue').value;
+        const category = document.getElementById('inputCategory').value;
+        const stickerCanvas = document.getElementById('stickerCanvas');
 
-      const item={
-        id:Date.now(), name, value:valueStr, rawValue:parseInt(valueStr.replace(/\D/g,'')),
-        category, rarity:currentRarity, detectedLabel, detectionConfidence,
-        image:stickerData, original:capturedBlob, created:new Date().toISOString(),
-        type:'object', parents:null
-      };
-      const g=getGallery(); g.unshift(item); localStorage.setItem(DB_KEY,JSON.stringify(g));
-      updateTotalValue(); showToast(`¡${name} guardado!`); goTo('gallery');
+        // Verificar que el canvas tenga contenido
+        const pixelCheck = stickerCanvas.getContext('2d').getImageData(0,0,1,1).data;
+        const stickerData = stickerCanvas.toDataURL('image/png');
+
+        const item = {
+          id: Date.now(),
+          name: name,
+          value: valueStr,
+          rawValue: parseInt(valueStr.replace(/\D/g,'')) || 0,
+          category: category,
+          rarity: currentRarity,
+          detectedLabel: detectedLabel,
+          detectionConfidence: detectionConfidence,
+          image: stickerData,
+          original: capturedBlob,
+          created: new Date().toISOString(),
+          type: 'object',
+          parents: null
+        };
+
+        const gallery = getGallery();
+        gallery.unshift(item);
+        localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+
+        updateTotalValue();
+        showToast('¡' + name + ' guardado en galería!');
+        goTo('gallery');
+      } catch(err) {
+        console.error('Error guardando:', err);
+        showToast('Error al guardar: ' + err.message);
+      }
     });
 
-    function getGallery(){ try{return JSON.parse(localStorage.getItem(DB_KEY))||[];}catch{return [];} }
+    function getGallery(){
+      try {
+        const raw = localStorage.getItem(DB_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch(e) {
+        console.error('Error leyendo galería:', e);
+        return [];
+      }
+    }
     function updateTotalValue(){
-      const total=getGallery().reduce((s,i)=>s+(i.rawValue||0),0);
-      document.getElementById('totalValue').textContent=formatMoney(total);
+      const total = getGallery().reduce((sum, item) => sum + (item.rawValue || 0), 0);
+      document.getElementById('totalValue').textContent = formatMoney(total);
     }
 
-    // ==================== GALLERY ====================
+    // ==================== GALLERÍA ====================
     function renderGallery(){
-      const gallery=getGallery();
-      const grid=document.getElementById('galleryGrid');
-      const empty=document.getElementById('emptyState');
+      const gallery = getGallery();
+      const grid = document.getElementById('galleryGrid');
+      const empty = document.getElementById('emptyState');
       updateTotalValue();
-      if(gallery.length===0){ grid.innerHTML=''; empty.classList.remove('hidden'); return; }
+
+      if(gallery.length === 0){
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
       empty.classList.add('hidden');
-      grid.innerHTML=gallery.map(item=>`
+
+      grid.innerHTML = gallery.map(item => `
         <div class="gallery-item" onclick="viewItem(${item.id})">
-          <img src="${item.image}" alt="${item.name}" loading="lazy">
+          <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
           <div class="gallery-type">${item.type==='brainroot'?'⚡ Brainroot':'📷 Objeto'}</div>
-          <div class="gallery-rarity ${item.rarity.class||'rarity-common'}"></div>
+          <div class="gallery-rarity ${item.rarity?.class || 'rarity-common'}"></div>
           <div class="gallery-info">
             <div class="gallery-name">${escapeHtml(item.name)}</div>
             <div class="gallery-value">${item.value}</div>
@@ -1074,27 +990,31 @@
       `).join('');
     }
     function viewItem(id){
-      const item=getGallery().find(i=>i.id===id);
+      const item = getGallery().find(i => i.id === id);
       if(!item) return;
-      showToast(`${item.name} — ${item.value}${item.type==='brainroot'?' — Brainroot':''}`);
+      showToast(`${item.name} — ${item.value}`);
     }
-    function escapeHtml(t){ const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+    function escapeHtml(text){
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
-    // ==================== COMBINAR (BRAINROOTS) ====================
+    // ==================== COMBINAR ====================
     function renderCombine(){
-      slotA=null; slotB=null;
+      slotA = null; slotB = null;
       updateSlots();
       document.getElementById('fusionResult').classList.add('hidden');
     }
     function updateSlots(){
-      ['A','B'].forEach(s=>{
-        const el=document.getElementById('slot'+s);
-        const slot = s==='A'?slotA:slotB;
+      ['A','B'].forEach(s => {
+        const el = document.getElementById('slot'+s);
+        const slot = s==='A' ? slotA : slotB;
         if(slot){
-          el.innerHTML=`<img src="${slot.image}" alt=""><div class="slot-label" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);padding:4px;font-size:0.7rem;">${escapeHtml(slot.name)}</div>`;
+          el.innerHTML = `<img src="${slot.image}" alt=""><div class="slot-label" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);padding:4px;font-size:0.7rem;">${escapeHtml(slot.name)}</div>`;
           el.classList.add('filled');
         } else {
-          el.innerHTML=`<span class="slot-label">Toca para seleccionar objeto ${s==='A'?1:2}</span>`;
+          el.innerHTML = `<span class="slot-label">Toca para seleccionar objeto ${s==='A'?1:2}</span>`;
           el.classList.remove('filled');
         }
       });
@@ -1103,19 +1023,19 @@
     }
 
     let pickingFor = null;
-    function openPicker(slot){ pickingFor=slot; renderPicker(); goTo('picker'); }
+    function openPicker(slot){ pickingFor = slot; renderPicker(); goTo('picker'); }
     function closePicker(){ goTo('combine'); }
     function renderPicker(){
-      const objects = getGallery().filter(i=>i.type==='object');
-      const grid=document.getElementById('pickerGrid');
-      if(objects.length===0){
-        grid.innerHTML='<p style="color:var(--text-dim);text-align:center;padding:40px;">No tienes objetos para combinar</p>';
+      const objects = getGallery().filter(i => i.type === 'object');
+      const grid = document.getElementById('pickerGrid');
+      if(objects.length === 0){
+        grid.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px;">No tienes objetos para combinar</p>';
         return;
       }
-      grid.innerHTML=objects.map(item=>`
+      grid.innerHTML = objects.map(item => `
         <div class="gallery-item" onclick="pickItem(${item.id})">
-          <img src="${item.image}" alt="${item.name}" loading="lazy">
-          <div class="gallery-rarity ${item.rarity.class||'rarity-common'}"></div>
+          <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
+          <div class="gallery-rarity ${item.rarity?.class || 'rarity-common'}"></div>
           <div class="gallery-info">
             <div class="gallery-name">${escapeHtml(item.name)}</div>
             <div class="gallery-value">${item.value}</div>
@@ -1124,52 +1044,45 @@
       `).join('');
     }
     function pickItem(id){
-      const item=getGallery().find(i=>i.id===id);
+      const item = getGallery().find(i => i.id === id);
       if(!item) return;
-      if(pickingFor==='A') slotA=item;
-      if(pickingFor==='B') slotB=item;
+      if(pickingFor === 'A') slotA = item;
+      if(pickingFor === 'B') slotB = item;
       closePicker();
     }
 
     let fusionData = null;
-    let fusionImageUrl = null;
-
     function showFusionPreview(){
       if(!slotA || !slotB) return;
       document.getElementById('fusionResult').classList.remove('hidden');
 
-      const rA = RARITY_IDX[slotA.rarity.name] || 0;
-      const rB = RARITY_IDX[slotB.rarity.name] || 0;
-      const newRarity = calculateFusionRarity(rA, rB);
-      const bonus = newRarity > Math.max(rA,rB) ? 1.3 : 1.15;
+      const rA = RARITY_IDX[slotA.rarity?.name] || 0;
+      const rB = RARITY_IDX[slotB.rarity?.name] || 0;
+      const newRarityIdx = calculateFusionRarity(rA, rB);
+      const newRarity = RARITY_TABLE[newRarityIdx];
+      const bonus = newRarityIdx > Math.max(rA, rB) ? 1.3 : 1.15;
       const fusedValue = Math.round((slotA.rawValue + slotB.rawValue) * bonus);
-      const fusedName = generateBrainrootName(slotA, slotB, newRarity);
-      const rName = RARITY_TABLE[newRarity].name;
+      const fusedName = generateBrainrootName(slotA, slotB, newRarityIdx);
 
-      // Generar imagen con IA (Pollinations.ai - gratis, sin API key)
-      const prompt = generateFusionPrompt(slotA, slotB, fusedName, rName);
+      // Generar imagen con IA
+      const prompt = generateFusionPrompt(slotA, slotB, fusedName, newRarity.name);
       const seed = Math.floor(Math.random() * 99999);
       const encodedPrompt = encodeURIComponent(prompt);
-      fusionImageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&negative_prompt=blurry,low quality,text,watermark,signature`;
+      const fusionImageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&negative_prompt=blurry,low quality,text,watermark,signature`;
 
-      // Mostrar placeholder mientras carga
       const img = document.getElementById('brainrootImg');
       const canvas = document.getElementById('brainrootCanvas');
       img.style.display = 'none';
       canvas.style.display = 'block';
+      drawFusionPlaceholder(canvas, newRarityIdx);
 
-      // Dibujar placeholder animado
-      drawFusionPlaceholder(canvas, newRarity);
-
-      // Cargar imagen IA
       img.onload = () => {
         img.style.display = 'block';
         canvas.style.display = 'none';
         document.getElementById('loading').classList.add('hidden');
       };
       img.onerror = () => {
-        // Fallback: mantener placeholder
-        showToast('La IA de fusión tardó demasiado. Intenta de nuevo.');
+        showToast('La IA tardó demasiado. Intenta de nuevo.');
         document.getElementById('loading').classList.add('hidden');
       };
 
@@ -1178,124 +1091,82 @@
       img.src = fusionImageUrl;
 
       document.getElementById('brainrootName').textContent = fusedName;
-      document.getElementById('brainrootRarity').textContent = rName;
-      document.getElementById('brainrootRarity').style.color = getRarityColor(rName);
+      document.getElementById('brainrootRarity').textContent = newRarity.name;
+      document.getElementById('brainrootRarity').style.color = getRarityColor(newRarity.name);
       document.getElementById('brainrootValue').textContent = formatMoney(fusedValue);
       document.getElementById('recipeHint').innerHTML = `
         <strong>Receta:</strong> ${escapeHtml(slotA.name)} + ${escapeHtml(slotB.name)}<br>
         <strong>Bonus de fusión:</strong> ${Math.round((bonus-1)*100)}% de valor extra
       `;
 
-      fusionData = { name: fusedName, rarity: RARITY_TABLE[newRarity], value: fusedValue, parents: [slotA.id, slotB.id], prompt };
+      fusionData = { name: fusedName, rarity: newRarity, value: fusedValue, parents: [slotA.id, slotB.id], prompt: prompt };
     }
 
-    function drawFusionPlaceholder(canvas, rarityIdx) {
+    function drawFusionPlaceholder(canvas, rarityIdx){
       const ctx = canvas.getContext('2d');
       canvas.width = 512; canvas.height = 512;
       const colors = ['#888','#3498db','#9b59b6','#ffd700'];
       const glow = colors[rarityIdx];
 
-      // Animated gradient background
       const grad = ctx.createRadialGradient(256,256,50,256,256,300);
       grad.addColorStop(0, glow+'44');
       grad.addColorStop(1, '#0f0f23');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0,0,512,512);
+      ctx.fillStyle = grad; ctx.fillRect(0,0,512,512);
 
-      // Draw both objects small
       const imgA = new Image(); imgA.src = slotA.image;
       const imgB = new Image(); imgB.src = slotB.image;
       let loaded = 0;
       const onLoad = () => {
         loaded++;
         if(loaded < 2) return;
-        ctx.save();
-        ctx.translate(140, 256);
-        ctx.rotate(-0.15);
-        ctx.drawImage(imgA, -70, -70, 140, 140);
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(372, 256);
-        ctx.rotate(0.15);
-        ctx.drawImage(imgB, -70, -70, 140, 140);
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(256, 256);
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(0,0,35,0,Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('⚡', 0, 2);
-        ctx.restore();
-
-        // Loading text
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.textAlign = 'center';
+        ctx.save(); ctx.translate(140,256); ctx.rotate(-0.15); ctx.drawImage(imgA, -70,-70,140,140); ctx.restore();
+        ctx.save(); ctx.translate(372,256); ctx.rotate(0.15); ctx.drawImage(imgB, -70,-70,140,140); ctx.restore();
+        ctx.save(); ctx.translate(256,256); ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(0,0,35,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚡', 0, 2); ctx.restore();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('Generando con IA...', 256, 400);
       };
-      imgA.onload = onLoad;
-      imgB.onload = onLoad;
+      imgA.onload = onLoad; imgB.onload = onLoad;
     }
 
-    function generateFusionPrompt(a, b, name, rarity) {
-      const esA = LABEL_ES[a.detectedLabel] || a.name.split(' ')[0];
-      const esB = LABEL_ES[b.detectedLabel] || b.name.split(' ').pop();
-      const styles = {
-        0: 'cartoon style, cute',
-        1: 'cartoon style, vibrant colors',
-        2: 'epic digital art, glowing effects',
-        3: 'legendary digital art, golden aura, masterpiece'
-      };
-      const rIdx = RARITY_IDX[rarity] || 0;
-      return `A funny creative fusion creature combining a ${esA} and a ${esB}, named "${name}", ${styles[rIdx]}, sticker design, white background, centered, high quality, no text`;
+    function generateFusionPrompt(a, b, name, rarity){
+      const w1 = a.name.split(' ')[0];
+      const w2 = b.name.split(' ').pop();
+      const styles = { 'COMÚN':'cartoon style, cute', 'RARO':'cartoon style, vibrant colors', 'ÉPICO':'epic digital art, glowing effects', 'LEGENDARIO':'legendary digital art, golden aura, masterpiece' };
+      return `A funny creative fusion creature combining a ${w1} and a ${w2}, named "${name}", ${styles[rarity]}, sticker design, white background, centered, high quality, no text`;
     }
 
-    function calculateFusionRarity(a, b) {
+    function calculateFusionRarity(a, b){
       const max = Math.max(a,b);
       const rand = Math.random();
-      if(max===3) return 3;
-      if(a===2 && b===2) return rand<0.5 ? 3 : 2;
-      if((a===2 && b===1) || (a===1 && b===2)) return rand<0.3 ? 3 : 2;
-      if(a===1 && b===1) return rand<0.4 ? 2 : 1;
-      if((a===1 && b===0) || (a===0 && b===1)) return rand<0.3 ? 2 : 1;
-      return rand<0.5 ? 1 : 0;
+      if(max === 3) return 3;
+      if(a === 2 && b === 2) return rand < 0.5 ? 3 : 2;
+      if((a === 2 && b === 1) || (a === 1 && b === 2)) return rand < 0.3 ? 3 : 2;
+      if(a === 1 && b === 1) return rand < 0.4 ? 2 : 1;
+      if((a === 1 && b === 0) || (a === 0 && b === 1)) return rand < 0.3 ? 2 : 1;
+      return rand < 0.5 ? 1 : 0;
     }
-
-    function generateBrainrootName(a, b, rarityIdx) {
-      const prefixes = {
-        0: ['Mini','Pequeño','Básico'],
-        1: ['Super','Mega','Ultra'],
-        2: ['Hyper','Cyber','Neo'],
-        3: ['Dios','Titan','Omega']
-      };
+    function generateBrainrootName(a, b, rarityIdx){
+      const prefixes = { 0:['Mini','Pequeño','Básico'], 1:['Super','Mega','Ultra'], 2:['Hyper','Cyber','Neo'], 3:['Dios','Titan','Omega'] };
       const p = prefixes[rarityIdx][Math.floor(Math.random()*prefixes[rarityIdx].length)];
       const w1 = a.name.split(' ')[0];
       const w2 = b.name.split(' ').pop();
       return `${p} ${w1}${w2}`;
     }
 
-    document.getElementById('btnFuse').addEventListener('click', ()=>{
+    document.getElementById('btnFuse').addEventListener('click', () => {
       if(!fusionData || !slotA || !slotB) return;
-
-      // Usar la imagen generada por IA o fallback al placeholder
       const img = document.getElementById('brainrootImg');
       let stickerData;
-      if(img.complete && img.naturalWidth > 0 && img.style.display !== 'none') {
+      if(img.complete && img.naturalWidth > 0 && img.style.display !== 'none'){
         const c = document.createElement('canvas');
         c.width = 512; c.height = 512;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, 512, 512);
+        c.getContext('2d').drawImage(img, 0, 0, 512, 512);
         stickerData = c.toDataURL('image/png');
       } else {
-        const c = document.getElementById('brainrootCanvas');
-        stickerData = c.toDataURL('image/png');
+        stickerData = document.getElementById('brainrootCanvas').toDataURL('image/png');
       }
 
       const item = {
@@ -1328,14 +1199,14 @@
     async function requestBattle(){
       if(!('Notification' in window)){ showToast('Notificaciones no soportadas'); return; }
       const perm = await Notification.requestPermission();
-      if(perm==='granted'){
+      if(perm === 'granted'){
         showToast('¡Notificaciones activadas!');
-        setTimeout(()=>{
-          new Notification('Combina2s',{
-            body:'¡Es tu turno de atacar!',
-            icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🥊</text></svg>'
+        setTimeout(() => {
+          new Notification('Combina2s', {
+            body: '¡Es tu turno de atacar!',
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🥊</text></svg>'
           });
-        },2000);
+        }, 2000);
       } else {
         showToast('Activa notificaciones para jugar por turnos');
       }
@@ -1343,9 +1214,10 @@
 
     // ==================== UTILS ====================
     function showToast(msg){
-      const t=document.getElementById('toast');
-      t.textContent=msg; t.classList.add('show');
-      setTimeout(()=>t.classList.remove('show'),3000);
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
     }
 
     // ==================== INIT ====================
@@ -1353,12 +1225,12 @@
     startCamera();
     updateTotalValue();
 
-    let lastTouchEnd=0;
-    document.addEventListener('touchend',e=>{
-      const now=Date.now();
-      if(now-lastTouchEnd<=300) e.preventDefault();
-      lastTouchEnd=now;
-    },false);
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', e => {
+      const now = Date.now();
+      if(now - lastTouchEnd <= 300) e.preventDefault();
+      lastTouchEnd = now;
+    }, false);
   </script>
 </body>
 </html>
