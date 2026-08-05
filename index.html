@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f0f23">
-  <title>Combina2s</title>
+  <title>Combina2s — IA Local</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
   <style>
@@ -21,13 +21,16 @@
       --radius: 16px;
       --shadow: 0 8px 32px rgba(0,0,0,0.4);
     }
+
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg); color: var(--text);
-      min-height: 100vh; overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
     }
+
     .screen { display: none; min-height: 100vh; padding: 20px; padding-bottom: 100px; animation: fadeIn 0.3s ease; }
     .screen.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -35,7 +38,8 @@
     .app-header {
       position: fixed; top: 0; left: 0; right: 0;
       background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
-      padding: 16px 20px; z-index: 100;
+      padding: 16px 20px;
+      z-index: 100;
       display: flex; justify-content: space-between; align-items: center;
     }
     .app-title {
@@ -44,14 +48,19 @@
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
     .coins-badge {
-      background: var(--surface-light); border: 1px solid var(--gold);
-      color: var(--gold); padding: 6px 14px; border-radius: 20px;
-      font-weight: 700; font-size: 0.9rem;
+      background: var(--surface-light);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.9rem;
     }
 
     .bottom-nav {
       position: fixed; bottom: 0; left: 0; right: 0;
-      background: var(--surface); border-top: 1px solid #333;
+      background: var(--surface);
+      border-top: 1px solid #333;
       display: flex; justify-content: space-around;
       padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
       z-index: 100;
@@ -59,70 +68,91 @@
     .nav-btn {
       background: none; border: none; color: var(--text-dim);
       display: flex; flex-direction: column; align-items: center;
-      gap: 4px; font-size: 0.7rem; cursor: pointer; padding: 8px 12px;
-      transition: all 0.2s; flex: 1;
+      gap: 4px; font-size: 0.7rem; cursor: pointer; padding: 8px 16px;
+      transition: all 0.2s;
     }
     .nav-btn.active { color: var(--accent); }
     .nav-btn svg { width: 24px; height: 24px; }
 
-    /* CÁMARA */
-    .camera-wrap {
-      position: relative; width: 100%; aspect-ratio: 3/4;
-      background: #000; border-radius: var(--radius);
-      overflow: hidden; margin-top: 60px; box-shadow: var(--shadow);
+    /* ===== CÁMARA ===== */
+    .camera-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/4;
+      background: #000;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-top: 60px;
+      box-shadow: var(--shadow);
     }
-    .camera-wrap video, .camera-wrap canvas {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+    #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #canvas-snap { display: none; }
+    .camera-overlay {
+      position: absolute; inset: 0;
+      border: 2px dashed var(--accent);
+      border-radius: var(--radius);
+      margin: 40px;
+      opacity: 0.5;
+      pointer-events: none;
     }
-    #overlayCanvas { pointer-events: none; z-index: 5; }
     .camera-hint {
-      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 20px;
-      font-size: 0.8rem; color: var(--text-dim); z-index: 6; white-space: nowrap;
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 8px 16px; border-radius: 20px;
+      font-size: 0.85rem; color: var(--text-dim);
     }
     .shutter-btn {
       position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-      width: 72px; height: 72px; border-radius: 50%;
-      background: var(--accent); border: 4px solid var(--bg);
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 4px solid var(--bg);
       box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow);
-      cursor: pointer; z-index: 90; transition: transform 0.1s;
+      cursor: pointer;
+      z-index: 90;
+      transition: transform 0.1s;
     }
     .shutter-btn:active { transform: translateX(-50%) scale(0.92); }
-    .shutter-btn:disabled { background: #555; cursor: not-allowed; box-shadow: none; }
-
-    /* EDITOR */
-    .editor-stage {
-      width: 100%; max-width: 360px; aspect-ratio: 1;
-      margin: 60px auto 20px; position: relative;
-      background: repeating-conic-gradient(#1a1a2e 0% 25%, #252540 0% 50%) 50% / 20px 20px;
-      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    .shutter-btn::after {
+      content: ''; position: absolute; inset: 8px;
+      border-radius: 50%; border: 2px solid var(--bg);
     }
-    .editor-stage canvas { width: 100%; height: 100%; }
-    .editor-frame {
-      position: absolute; inset: 0; border: 3px dashed var(--accent);
-      border-radius: var(--radius); pointer-events: none; z-index: 2;
-    }
-    .editor-controls { max-width: 360px; margin: 0 auto; }
-    .slider-group { margin: 12px 0; }
-    .slider-group label {
-      display: flex; justify-content: space-between;
-      font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px;
-    }
-    .slider-group input[type="range"] {
-      width: 100%; -webkit-appearance: none; appearance: none;
-      height: 6px; border-radius: 3px; background: var(--surface-light); outline: none;
-    }
-    .slider-group input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none; appearance: none;
-      width: 20px; height: 20px; border-radius: 50%; background: var(--accent); cursor: pointer;
+    .shutter-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+      box-shadow: none;
     }
 
-    /* PREVIEW */
-    .preview-container { margin-top: 60px; text-align: center; }
+    /* ===== DETECCIÓN EN VIVO ===== */
+    .detection-box {
+      position: absolute;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .detection-label {
+      position: absolute;
+      top: -24px;
+      left: 0;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    /* ===== PREVIEW ===== */
+    .preview-container {
+      margin-top: 60px;
+      text-align: center;
+    }
     .sticker-preview {
-      width: 260px; height: 260px; margin: 20px auto; position: relative;
-      background: repeating-conic-gradient(#1a1a2e 0% 25%, #252540 0% 50%) 50% / 20px 20px;
-      border-radius: var(--radius);
+      width: 280px; height: 280px;
+      margin: 20px auto;
+      position: relative;
     }
     .sticker-preview canvas {
       width: 100%; height: 100%;
@@ -130,66 +160,108 @@
     }
     .sticker-badge {
       position: absolute; top: -10px; right: -10px;
-      padding: 6px 12px; border-radius: 12px;
-      font-size: 0.75rem; font-weight: 700;
-      transform: rotate(12deg); box-shadow: var(--shadow);
+      background: var(--danger);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 0.8rem; font-weight: 700;
+      transform: rotate(12deg);
+      box-shadow: var(--shadow);
     }
     .ia-detected {
-      background: var(--surface); border: 1px solid var(--accent-dim);
-      border-radius: 12px; padding: 12px 16px; margin: 12px 0; text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--accent-dim);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      text-align: left;
     }
     .ia-detected .label {
-      font-size: 0.7rem; color: var(--accent); text-transform: uppercase;
-      font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px;
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
     }
-    .ia-detected .value { font-size: 1.05rem; font-weight: 700; }
+    .ia-detected .value {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
 
-    .form-group { margin: 14px 0; text-align: left; }
+    .form-group {
+      margin: 16px 0;
+      text-align: left;
+    }
     .form-group label {
       display: block; margin-bottom: 6px;
       font-size: 0.85rem; color: var(--text-dim); font-weight: 600;
     }
     .form-group input, .form-group select {
-      width: 100%; padding: 14px 16px; border-radius: 12px;
-      border: 1px solid var(--surface-light); background: var(--surface);
-      color: var(--text); font-size: 1rem; outline: none;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--surface-light);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
     }
     .form-group input:focus { border-color: var(--accent); }
 
     .btn {
-      width: 100%; padding: 16px; border-radius: 12px; border: none;
-      font-size: 1rem; font-weight: 700; cursor: pointer;
-      transition: all 0.2s; margin-top: 8px;
+      width: 100%; padding: 16px;
+      border-radius: 12px; border: none;
+      font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+      margin-top: 8px;
     }
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent), #00b894); color: var(--bg);
+      background: linear-gradient(135deg, var(--accent), #00b894);
+      color: var(--bg);
     }
     .btn-primary:active { opacity: 0.9; transform: scale(0.98); }
-    .btn-primary:disabled { background: #2a4a40; color: #668; cursor: not-allowed; }
-    .btn-secondary { background: var(--surface-light); color: var(--text); }
-    .btn-gold {
-      background: linear-gradient(135deg, var(--gold), #e6c200); color: #1a1500;
+    .btn-primary:disabled {
+      background: #2a4a40;
+      color: #668;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--surface-light);
+      color: var(--text);
     }
     .btn-row { display: flex; gap: 12px; margin-top: 16px; }
     .btn-row .btn { flex: 1; margin-top: 0; }
 
-    /* GALERÍA */
+    /* ===== GALERÍA ===== */
     .gallery-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr);
-      gap: 14px; margin-top: 60px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 60px;
     }
     .gallery-item {
-      background: var(--surface); border-radius: var(--radius);
-      overflow: hidden; position: relative; aspect-ratio: 1;
-      box-shadow: var(--shadow); transition: transform 0.2s; cursor: pointer;
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 1;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s;
     }
     .gallery-item:active { transform: scale(0.96); }
-    .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
-    .gallery-type {
-      position: absolute; top: 8px; left: 8px;
-      background: rgba(0,0,0,0.6); color: var(--accent);
-      font-size: 0.65rem; font-weight: 700; padding: 3px 8px;
-      border-radius: 8px; text-transform: uppercase;
+    .gallery-item img, .gallery-item canvas {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .gallery-info {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9));
+      padding: 12px;
+    }
+    .gallery-name { font-size: 0.85rem; font-weight: 700; }
+    .gallery-value {
+      font-size: 0.75rem; color: var(--gold); font-weight: 600;
     }
     .gallery-rarity {
       position: absolute; top: 8px; right: 8px;
@@ -199,67 +271,112 @@
     .rarity-rare { background: #3498db; }
     .rarity-epic { background: #9b59b6; }
     .rarity-legendary { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
-    .gallery-info {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.9)); padding: 12px;
-    }
-    .gallery-name { font-size: 0.8rem; font-weight: 700; }
-    .gallery-value { font-size: 0.7rem; color: var(--gold); font-weight: 600; }
-    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
 
-    /* COMBINAR */
-    .combine-pick {
-      display: grid; grid-template-columns: 1fr 40px 1fr;
-      align-items: center; gap: 8px; margin: 20px 0;
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--text-dim);
     }
-    .combine-slot {
-      aspect-ratio: 1; background: var(--surface); border-radius: var(--radius);
-      border: 2px dashed var(--surface-light); display: flex;
-      flex-direction: column; align-items: center; justify-content: center;
-      cursor: pointer; overflow: hidden; position: relative;
+    .empty-state svg { width: 80px; height: 80px; margin-bottom: 16px; opacity: 0.3; }
+
+    /* ===== FUSION / BRAINROOT ===== */
+    .gallery-header {
+      margin-top: 60px; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
     }
-    .combine-slot.filled { border-style: solid; border-color: var(--accent); }
-    .combine-slot img { width: 100%; height: 100%; object-fit: cover; }
-    .combine-slot .slot-label {
-      font-size: 0.75rem; color: var(--text-dim); text-align: center; padding: 8px;
+    .gallery-header h2 { font-size: 1.3rem; }
+    .btn-fusion-toggle {
+      background: linear-gradient(135deg, #9b59b6, #6c3fa3);
+      color: #fff; border: none; border-radius: 20px;
+      padding: 8px 16px; font-size: 0.8rem; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(155,89,182,0.35);
     }
-    .combine-plus { text-align: center; font-size: 1.5rem; color: var(--accent); font-weight: 700; }
-    .brainroot-preview {
-      width: 240px; height: 240px; margin: 20px auto; position: relative;
+    .btn-fusion-toggle:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+    .btn-fusion-toggle.active { background: var(--surface-light); color: var(--text); }
+
+    .gallery-item.selectable { cursor: pointer; }
+    .gallery-item.selectable::before {
+      content: ''; position: absolute; inset: 0;
+      border: 3px solid transparent; border-radius: var(--radius);
+      z-index: 5; transition: border-color 0.15s; pointer-events: none;
     }
-    .brainroot-preview img, .brainroot-preview canvas {
-      width: 100%; height: 100%; border-radius: var(--radius);
-      object-fit: cover; filter: drop-shadow(0 8px 24px rgba(0,212,170,0.3));
+    .gallery-item.selected::before { border-color: #9b59b6; }
+    .gallery-item.selected { transform: scale(0.96); }
+    .select-check {
+      position: absolute; top: 8px; left: 8px; z-index: 6;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,0.5); border: 2px solid #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 800; color: #fff;
     }
-    .brainroot-glow {
-      position: absolute; inset: -20px; border-radius: 50%;
-      background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
-      pointer-events: none; animation: breathe 3s ease-in-out infinite;
-    }
-    @keyframes breathe { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
-    .recipe-hint {
-      background: var(--surface); border-radius: 12px; padding: 12px;
-      font-size: 0.8rem; color: var(--text-dim); margin-top: 12px;
+    .gallery-item.selected .select-check { background: #9b59b6; border-color: #9b59b6; }
+    .brainroot-tag {
+      position: absolute; top: 8px; left: 8px; z-index: 6;
+      background: linear-gradient(135deg, #9b59b6, #6c3fa3);
+      color: #fff; font-size: 0.6rem; font-weight: 800;
+      padding: 3px 8px; border-radius: 8px; letter-spacing: 0.5px;
     }
 
-    /* COMBATE */
+    .fusion-bar {
+      position: fixed; left: 20px; right: 20px; bottom: 76px;
+      background: var(--surface); border: 1px solid #9b59b6;
+      border-radius: var(--radius); padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      box-shadow: var(--shadow); z-index: 95;
+    }
+    .fusion-bar .fusion-count { font-size: 0.85rem; font-weight: 700; color: var(--text-dim); }
+    .fusion-bar .fusion-count b { color: #cc8fe0; }
+    .fusion-bar-actions { display: flex; gap: 8px; }
+    .fusion-bar button {
+      border: none; border-radius: 10px; padding: 10px 14px;
+      font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    }
+    .fusion-bar .btn-do-fuse { background: linear-gradient(135deg, #9b59b6, #6c3fa3); color: #fff; }
+    .fusion-bar .btn-do-fuse:disabled { background: #3a2f45; color: #776; cursor: not-allowed; }
+    .fusion-bar .btn-cancel-fuse { background: var(--surface-light); color: var(--text); }
+
+    .fusion-sources {
+      display: flex; align-items: center; justify-content: center;
+      gap: 16px; margin: 20px 0;
+    }
+    .fusion-source-thumb {
+      width: 84px; height: 84px; border-radius: 16px; overflow: hidden;
+      box-shadow: var(--shadow); border: 2px solid var(--surface-light);
+    }
+    .fusion-source-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .fusion-plus { font-size: 1.4rem; color: #9b59b6; font-weight: 800; }
+
+    /* ===== COMBATE ===== */
     .battle-card {
-      background: var(--surface); border-radius: var(--radius);
-      padding: 20px; margin: 12px 0; border: 1px solid var(--surface-light);
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin: 12px 0;
+      border: 1px solid var(--surface-light);
     }
-    .battle-opponent { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .battle-opponent {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px;
+    }
     .battle-avatar {
-      width: 48px; height: 48px; border-radius: 50%; background: var(--surface-light);
-      display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--surface-light);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
     }
-    .battle-status { font-size: 0.8rem; color: var(--accent); margin-top: 4px; }
+    .battle-status {
+      font-size: 0.8rem; color: var(--accent);
+      margin-top: 4px;
+    }
     .turn-indicator {
-      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent); margin-right: 6px; animation: pulse 1.5s infinite;
+      display: inline-block;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      margin-right: 6px;
+      animation: pulse 1.5s infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-    /* UTILS */
+    /* ===== UTILS ===== */
     .hidden { display: none !important; }
     .loading {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -267,30 +384,44 @@
       z-index: 200;
     }
     .spinner {
-      width: 48px; height: 48px; border: 3px solid var(--surface-light);
-      border-top-color: var(--accent); border-radius: 50%;
+      width: 48px; height: 48px;
+      border: 3px solid var(--surface-light);
+      border-top-color: var(--accent);
+      border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .toast {
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      background: var(--surface); color: var(--text); padding: 12px 24px;
-      border-radius: 12px; border: 1px solid var(--accent); z-index: 300;
-      transition: transform 0.3s ease; font-size: 0.9rem; font-weight: 600;
+      background: var(--surface); color: var(--text);
+      padding: 12px 24px; border-radius: 12px;
+      border: 1px solid var(--accent);
+      z-index: 300; transition: transform 0.3s ease;
+      font-size: 0.9rem; font-weight: 600;
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
+
     .model-status {
       position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
-      background: var(--surface); border: 1px solid var(--accent-dim);
-      color: var(--accent); padding: 6px 16px; border-radius: 20px;
-      font-size: 0.75rem; z-index: 95; display: flex; align-items: center; gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      z-index: 95;
+      display: flex; align-items: center; gap: 8px;
     }
     .model-status .dot {
       width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent); animation: pulse 1.5s infinite;
+      background: var(--accent);
+      animation: pulse 1.5s infinite;
     }
-    .model-status.ready .dot { background: #2ecc71; animation: none; }
-    .section-title { margin-top: 60px; margin-bottom: 16px; font-size: 1.3rem; font-weight: 700; }
+    .model-status.ready .dot {
+      background: #2ecc71;
+      animation: none;
+    }
+
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--surface-light); border-radius: 3px; }
@@ -305,60 +436,31 @@
 
   <div class="model-status" id="modelStatus">
     <div class="dot"></div>
-    <span id="modelStatusText">Cargando IA...</span>
+    <span id="modelStatusText">Cargando modelo de IA...</span>
   </div>
 
   <div class="toast" id="toast"></div>
+
   <div class="loading hidden" id="loading">
     <div class="spinner"></div>
-    <p style="margin-top:16px;color:var(--text-dim);font-size:0.9rem;" id="loadingText">Procesando...</p>
+    <p style="margin-top:16px;color:var(--text-dim);font-size:0.9rem;" id="loadingText">Analizando objeto con IA...</p>
   </div>
 
-  <!-- CÁMARA -->
+  <!-- ===== CÁMARA ===== -->
   <div class="screen active" id="screen-camera">
-    <div class="camera-wrap" id="cameraWrap">
+    <div class="camera-container" id="cameraContainer">
       <video id="video" autoplay playsinline muted></video>
-      <canvas id="overlayCanvas"></canvas>
+      <div class="camera-overlay"></div>
       <div class="camera-hint" id="cameraHint">Centra el objeto en el marco</div>
     </div>
-    <button class="shutter-btn" id="btnShutter" disabled></button>
-    <canvas id="canvas-snap" style="display:none"></canvas>
+    <button class="shutter-btn" id="btnShutter" aria-label="Capturar"></button>
+    <canvas id="canvas-snap"></canvas>
   </div>
 
-  <!-- EDITOR -->
-  <div class="screen" id="screen-editor">
-    <h2 class="section-title" style="text-align:center;">✏️ Ajustar Sticker</h2>
-    <div class="editor-stage" id="editorStage">
-      <canvas id="editorCanvas"></canvas>
-      <div class="editor-frame"></div>
-    </div>
-    <div class="editor-controls">
-      <div class="slider-group">
-        <label><span>Zoom</span><span id="zoomVal">1.0x</span></label>
-        <input type="range" id="zoomSlider" min="0.5" max="2.5" step="0.05" value="1.0">
-      </div>
-      <div class="slider-group">
-        <label><span>Rotación</span><span id="rotVal">0°</span></label>
-        <input type="range" id="rotSlider" min="-45" max="45" step="1" value="0">
-      </div>
-      <div class="slider-group">
-        <label><span>Brillo</span><span id="brightVal">0%</span></label>
-        <input type="range" id="brightSlider" min="-30" max="30" step="1" value="0">
-      </div>
-      <p style="font-size:0.75rem;color:var(--text-dim);text-align:center;margin:8px 0;">
-        Arrastra para mover • Ajusta zoom y rotación
-      </p>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo('camera')">↺ Retomar</button>
-        <button class="btn btn-primary" id="btnEditorConfirm">✨ Generar Sticker</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- PREVIEW -->
+  <!-- ===== PREVIEW ===== -->
   <div class="screen" id="screen-preview">
     <div class="preview-container">
-      <div class="sticker-preview">
+      <div class="sticker-preview" id="stickerPreview">
         <canvas id="stickerCanvas"></canvas>
         <div class="sticker-badge" id="rarityBadge">COMÚN</div>
       </div>
@@ -372,10 +474,12 @@
         <label>Nombre del objeto</label>
         <input type="text" id="inputName" placeholder="Ej: Semáforo Callejero" maxlength="30">
       </div>
+
       <div class="form-group">
         <label>Valor estimado</label>
-        <input type="text" id="inputValue" readonly style="color:var(--gold);font-weight:700;">
+        <input type="text" id="inputValue" placeholder="$12.500" readonly style="color:var(--gold);font-weight:700;">
       </div>
+
       <div class="form-group">
         <label>Categoría</label>
         <select id="inputCategory">
@@ -385,66 +489,84 @@
           <option value="otro">Otro</option>
         </select>
       </div>
+
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goTo('editor')">← Editar</button>
+        <button class="btn btn-secondary" onclick="goTo('camera')">↺ Reintentar</button>
         <button class="btn btn-primary" id="btnSave">💾 Guardar en Galería</button>
       </div>
     </div>
   </div>
 
-  <!-- GALERÍA -->
+  <!-- ===== GALERÍA ===== -->
   <div class="screen" id="screen-gallery">
-    <h2 class="section-title">Tu Colección</h2>
+    <div class="gallery-header">
+      <h2>Tu Colección</h2>
+      <button class="btn-fusion-toggle" id="btnFusionToggle" onclick="toggleFusionMode()">🧬 Fusionar</button>
+    </div>
     <div class="gallery-grid" id="galleryGrid"></div>
     <div class="empty-state hidden" id="emptyState">
-      <p style="font-size:1.5rem;margin-bottom:12px;">📷</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 16"/>
+      </svg>
       <p>Aún no tienes objetos capturados</p>
-      <p style="font-size:0.85rem;margin-top:8px;">Ve a la cámara y fotografía algo</p>
+      <p style="font-size:0.85rem;margin-top:8px;">Ve a la cámara y fotografía algo de tu entorno</p>
+    </div>
+
+    <div class="fusion-bar hidden" id="fusionBar">
+      <div class="fusion-count"><b id="fusionCount">0</b>/2 seleccionados</div>
+      <div class="fusion-bar-actions">
+        <button class="btn-cancel-fuse" onclick="toggleFusionMode()">Cancelar</button>
+        <button class="btn-do-fuse" id="btnDoFuse" disabled onclick="confirmFusionSelection()">Fusionar ✨</button>
+      </div>
     </div>
   </div>
 
-  <!-- COMBINAR -->
-  <div class="screen" id="screen-combine">
-    <h2 class="section-title">⚡ Crear Brainroot</h2>
-    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;">
-      Selecciona 2 objetos. La IA generará una fusión divertida.
-    </p>
-    <div class="combine-pick" id="combinePick">
-      <div class="combine-slot" id="slotA" onclick="openPicker('A')">
-        <span class="slot-label">Toca para seleccionar objeto 1</span>
+  <!-- ===== FUSIÓN / BRAINROOT ===== -->
+  <div class="screen" id="screen-fusion">
+    <div class="preview-container">
+      <div class="fusion-sources">
+        <div class="fusion-source-thumb"><img id="fusionThumbA" src="" alt=""></div>
+        <div class="fusion-plus">+</div>
+        <div class="fusion-source-thumb"><img id="fusionThumbB" src="" alt=""></div>
       </div>
-      <div class="combine-plus">+</div>
-      <div class="combine-slot" id="slotB" onclick="openPicker('B')">
-        <span class="slot-label">Toca para seleccionar objeto 2</span>
+
+      <div class="sticker-preview" id="fusionStickerPreview">
+        <canvas id="fusionCanvas"></canvas>
+        <div class="sticker-badge" id="fusionRarityBadge">COMÚN</div>
       </div>
-    </div>
-    <div id="fusionResult" class="hidden">
-      <div class="brainroot-preview">
-        <div class="brainroot-glow"></div>
-        <img id="brainrootImg" src="" alt="Brainroot" style="display:none;">
-        <canvas id="brainrootCanvas" style="display:none;"></canvas>
+
+      <div class="ia-detected">
+        <div class="label">🧬 Brainroot generado</div>
+        <div class="value" id="fusionDetected">Combinando...</div>
       </div>
-      <div style="text-align:center;">
-        <div id="brainrootName" style="font-size:1.2rem;font-weight:700;margin-bottom:4px;"></div>
-        <div id="brainrootRarity" style="font-size:0.85rem;color:var(--accent);margin-bottom:4px;"></div>
-        <div id="brainrootValue" style="font-size:1rem;color:var(--gold);font-weight:700;"></div>
+
+      <div class="form-group">
+        <label>Nombre del Brainroot</label>
+        <input type="text" id="fusionInputName" placeholder="Nombre" maxlength="40">
       </div>
-      <div class="recipe-hint" id="recipeHint"></div>
-      <button class="btn btn-gold" style="margin-top:16px;" id="btnFuse">🔥 Fusionar y Guardar</button>
+
+      <div class="form-group">
+        <label>Valor estimado</label>
+        <input type="text" id="fusionInputValue" readonly style="color:var(--gold);font-weight:700;">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="cancelFusionResult()">✕ Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveFusion" disabled>💾 Crear Brainroot</button>
+      </div>
+      <p style="font-size:0.75rem;color:var(--text-dim);margin-top:10px;">⚠️ Al crear el Brainroot, los 2 objetos originales se consumirán.</p>
     </div>
   </div>
 
-  <!-- PICKER -->
-  <div class="screen" id="screen-picker" style="background:var(--bg);z-index:150;">
-    <h2 class="section-title">Selecciona un objeto</h2>
-    <div class="gallery-grid" id="pickerGrid"></div>
-    <button class="btn btn-secondary" style="margin-top:20px;" onclick="closePicker()">Cancelar</button>
-  </div>
-
-  <!-- COMBATE -->
+  <!-- ===== COMBATE ===== -->
   <div class="screen" id="screen-battle">
-    <h2 class="section-title">Combates</h2>
-    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:20px;">Turnos por notificación.</p>
+    <h2 style="margin-top:60px;margin-bottom:16px;font-size:1.3rem;">Combates</h2>
+    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:20px;">
+      Turnos por notificación. Recibirás una alerta cuando sea tu turno.
+    </p>
+
     <div class="battle-card">
       <div class="battle-opponent">
         <div class="battle-avatar">🥊</div>
@@ -455,765 +577,791 @@
       </div>
       <button class="btn btn-primary" onclick="requestBattle()">Buscar combate</button>
     </div>
+
+    <div class="battle-card" style="opacity:0.6;">
+      <div class="battle-opponent">
+        <div class="battle-avatar">🏆</div>
+        <div>
+          <div style="font-weight:700;">Torneo Semanal</div>
+          <div class="battle-status">Próximo: Lunes 10:00</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary" disabled>Inscribirse</button>
+    </div>
+
     <div style="margin-top:24px;padding:16px;background:var(--surface);border-radius:var(--radius);border:1px dashed var(--surface-light);">
-      <p style="font-size:0.85rem;color:var(--text-dim;">
-        💡 <strong>Próximamente:</strong> enfrenta tus Brainroots contra otros jugadores.
+      <p style="font-size:0.85rem;color:var(--text-dim);">
+        🧬 <strong>Nuevo:</strong> ya puedes combinar 2 objetos de tu galería para crear un <em>Brainroot</em>. Próximamente podrás usarlo para luchar contra otros jugadores.
       </p>
+      <button class="btn btn-secondary" style="margin-top:12px;" onclick="goTo('gallery')">Ir a la Galería</button>
     </div>
   </div>
 
-  <!-- NAV -->
+  <!-- ===== NAV ===== -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-screen="camera" onclick="goTo('camera')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
       <span>Capturar</span>
     </button>
     <button class="nav-btn" data-screen="gallery" onclick="goTo('gallery')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
       <span>Galería</span>
     </button>
-    <button class="nav-btn" data-screen="combine" onclick="goTo('combine')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      <span>Combinar</span>
-    </button>
     <button class="nav-btn" data-screen="battle" onclick="goTo('battle')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <path d="M12 18v-6"/>
+        <path d="M9 15l3-3 3 3"/>
+      </svg>
       <span>Combate</span>
     </button>
   </nav>
 
   <script>
     // ==================== STATE ====================
-    const DB_KEY = 'combina2s_v5';
+    const DB_KEY = 'combina2s_gallery_v2';
     let stream = null;
+    let capturedBlob = null;
+    let currentRarity = 'common';
     let model = null;
     let isModelLoading = true;
     let detectedLabel = '';
     let detectionConfidence = 0;
-    let capturedBlob = null;
-    let currentRarity = RARITY_TABLE[0];
-    let editorImage = null;
-    let editorTransform = { zoom: 1, rot: 0, panX: 0, panY: 0, bright: 0 };
-    let isDragging = false;
-    let dragStart = { x: 0, y: 0 };
-    let slotA = null;
-    let slotB = null;
-    let lastDetection = null; // guarda bbox de la última detección
 
+    // Fusión / Brainroot
+    let fusionMode = false;
+    let fusionSelection = [];
+    let pendingFusion = null;
+
+    // Traducción COCO-SSD → Español
     const LABEL_ES = {
-      person:'Persona',bicycle:'Bicicleta',car:'Auto',motorcycle:'Moto',airplane:'Avión',bus:'Bus',train:'Tren',truck:'Camión',boat:'Bote',
-      'traffic light':'Semáforo','fire hydrant':'Grifo de Incendios','stop sign':'Señal de Pare','parking meter':'Parquímetro',bench:'Banca',
-      bird:'Pájaro',cat:'Gato',dog:'Perro',horse:'Caballo',sheep:'Oveja',cow:'Vaca',elephant:'Elefante',bear:'Oso',zebra:'Cebra',giraffe:'Jirafa',
-      backpack:'Mochila',umbrella:'Paraguas',handbag:'Cartera',tie:'Corbata',suitcase:'Maleta',frisbee:'Frisbee',skis:'Esquíes',snowboard:'Snowboard',
-      'sports ball':'Pelota',kite:'Cometa','baseball bat':'Bate','baseball glove':'Guante',skateboard:'Skate',surfboard:'Tabla de Surf',
-      'tennis racket':'Raqueta',bottle:'Botella','wine glass':'Copa',cup:'Taza',fork:'Tenedor',knife:'Cuchillo',spoon:'Cuchara',bowl:'Bowl',
-      banana:'Plátano',apple:'Manzana',sandwich:'Sándwich',orange:'Naranja',broccoli:'Brócoli',carrot:'Zanahoria','hot dog':'Hot Dog',pizza:'Pizza',
-      donut:'Donut',cake:'Torta',chair:'Silla',couch:'Sofá','potted plant':'Planta',bed:'Cama','dining table':'Mesa',toilet:'Baño',tv:'Televisor',
-      laptop:'Laptop',mouse:'Mouse',remote:'Control Remoto',keyboard:'Teclado','cell phone':'Celular',microwave:'Microondas',oven:'Horno',
-      toaster:'Tostadora',sink:'Lavaplatos',refrigerator:'Refrigerador',book:'Libro',clock:'Reloj',vase:'Florero',scissors:'Tijeras',
-      'teddy bear':'Oso de Peluche','hair drier':'Secador de Pelo',toothbrush:'Cepillo de Dientes'
+      person: 'Persona', bicycle: 'Bicicleta', car: 'Auto', motorcycle: 'Moto',
+      airplane: 'Avión', bus: 'Bus', train: 'Tren', truck: 'Camión', boat: 'Bote',
+      'traffic light': 'Semáforo', 'fire hydrant': 'Grifo de Incendios', 'stop sign': 'Señal de Pare',
+      'parking meter': 'Parquímetro', bench: 'Banca', bird: 'Pájaro', cat: 'Gato', dog: 'Perro',
+      horse: 'Caballo', sheep: 'Oveja', cow: 'Vaca', elephant: 'Elefante', bear: 'Oso',
+      zebra: 'Cebra', giraffe: 'Jirafa', backpack: 'Mochila', umbrella: 'Paraguas',
+      handbag: 'Cartera', tie: 'Corbata', suitcase: 'Maleta', frisbee: 'Frisbee',
+      skis: 'Esquíes', snowboard: 'Snowboard', 'sports ball': 'Pelota', kite: 'Cometa',
+      'baseball bat': 'Bate', 'baseball glove': 'Guante', skateboard: 'Skate',
+      surfboard: 'Tabla de Surf', 'tennis racket': 'Raqueta', bottle: 'Botella',
+      'wine glass': 'Copa', cup: 'Taza', fork: 'Tenedor', knife: 'Cuchillo', spoon: 'Cuchara',
+      bowl: 'Bowl', banana: 'Plátano', apple: 'Manzana', sandwich: 'Sándwich', orange: 'Naranja',
+      broccoli: 'Brócoli', carrot: 'Zanahoria', 'hot dog': 'Hot Dog', pizza: 'Pizza', donut: 'Donut',
+      cake: 'Torta', chair: 'Silla', couch: 'Sofá', 'potted plant': 'Planta', bed: 'Cama',
+      'dining table': 'Mesa', toilet: 'Baño', tv: 'Televisor', laptop: 'Laptop', mouse: 'Mouse',
+      remote: 'Control Remoto', keyboard: 'Teclado', 'cell phone': 'Celular', microwave: 'Microondas',
+      oven: 'Horno', toaster: 'Tostadora', sink: 'Lavaplatos', refrigerator: 'Refrigerador',
+      book: 'Libro', clock: 'Reloj', vase: 'Florero', scissors: 'Tijeras', 'teddy bear': 'Oso de Peluche',
+      'hair drier': 'Secador de Pelo', toothbrush: 'Cepillo de Dientes'
     };
 
+    // Nombres creativos por categoría de objeto
     const CREATIVE_NAMES = {
-      'traffic light':['Semáforo Veloz','Luz de Cruce','Guardián del Tránsito'],'fire hydrant':['Grifo de Fuego','Hidrante Urbano','Guardián del Agua'],
-      bottle:['Botella Mística','Frasco Encantado','Botella de Cristal'],cup:['Taza Real','Copa Mágica','Vaso Encantado'],
-      chair:['Silla de Trono','Asiento Real','Silla Coqueta'],tv:['Televisor Retro','Pantalla Mágica','Caja de Luz'],
-      laptop:['Portátil Veloz','Computadora Mágica','Laptop de Batalla'],mouse:['Ratón Veloz','Mouse de Precisión','Roedor Digital'],
-      keyboard:['Teclado Ruidoso','Teclas de Poder','Teclado Mecánico'],'cell phone':['Celular Inteligente','Dispositivo Móvil','Teléfono Mágico'],
-      book:['Libro de Hechizos','Tomo Místico','Libro de Sabiduría'],clock:['Reloj del Tiempo','Cronómetro Mágico','Marcador de Horas'],
-      car:['Auto Veloz','Máquina de Calle','Vehículo Urbano'],bus:['Bus Colectivo','Guagua Mágica','Transporte Real'],
-      bench:['Banca Callejera','Asiento Urbano','Banca de Descanso'],umbrella:['Paraguas Mágico','Sombrilla Protectora','Escudo de Lluvia'],
-      backpack:['Mochila de Aventura','Morral Místico','Mochila de Batalla'],'potted plant':['Planta Mística','Maceta Encantada','Vegetal Urbano'],
-      refrigerator:['Nevera Real','Congelador Mágico','Heladera de Hielo'],microwave:['Microondas Veloz','Horno Rápido','Calentador Mágico'],
-      sink:['Lavaplatos Real','Pileta Mágica','Fregadero Urbano'],toilet:['Trono Real','Sanitario Místico','Baño de Poder'],
-      bed:['Cama de Ensueño','Lecho Místico','Cama Real'],couch:['Sofá Real','Diván Místico','Sillón de Poder'],
-      'dining table':['Mesa Real','Tabla de Festines','Mesa de Batalla'],default:['Objeto Misterioso','Artefacto Curioso','Reliquia Urbana','Hallazgo Inesperado']
+      'traffic light': ['Semáforo Veloz', 'Luz de Cruce', 'Guardián del Tránsito', 'Semáforo Eléctrico'],
+      'fire hydrant': ['Grifo de Fuego', 'Hidrante Urbano', 'Guardián del Agua', 'Grifo Rojo'],
+      bottle: ['Botella Mística', 'Frasco Encantado', 'Botella de Cristal', 'Envase Legendario'],
+      cup: ['Taza Real', 'Copa Mágica', 'Vaso Encantado', 'Taza Dorada'],
+      chair: ['Silla de Trono', 'Asiento Real', 'Silla Coqueta', 'Trono de Madera'],
+      tv: ['Televisor Retro', 'Pantalla Mágica', 'Caja de Luz', 'Monitor Ancestral'],
+      laptop: ['Portátil Veloz', 'Computadora Mágica', 'Laptop de Batalla', 'Máquina de Código'],
+      mouse: ['Ratón Veloz', 'Mouse de Precisión', 'Roedor Digital', 'Apuntador Mágico'],
+      keyboard: ['Teclado Ruidoso', 'Teclas de Poder', 'Teclado Mecánico', 'Piano Digital'],
+      'cell phone': ['Celular Inteligente', 'Dispositivo Móvil', 'Teléfono Mágico', 'Comunicador'],
+      book: ['Libro de Hechizos', 'Tomo Místico', 'Libro de Sabiduría', 'Grimorio'],
+      clock: ['Reloj del Tiempo', 'Cronómetro Mágico', 'Marcador de Horas', 'Reloj Ancestral'],
+      car: ['Auto Veloz', 'Máquina de Calle', 'Vehículo Urbano', 'Carroza Metálica'],
+      bus: ['Bus Colectivo', 'Guagua Mágica', 'Transporte Real', 'Bus de Batalla'],
+      bench: ['Banca Callejera', 'Asiento Urbano', 'Banca de Descanso', 'Trono de Parque'],
+      umbrella: ['Paraguas Mágico', 'Sombrilla Protectora', 'Escudo de Lluvia', 'Paraguas Volador'],
+      backpack: ['Mochila de Aventura', 'Morral Místico', 'Mochila de Batalla', 'Bolso Viajero'],
+      'potted plant': ['Planta Mística', 'Maceta Encantada', 'Vegetal Urbano', 'Planta Guardiana'],
+      refrigerator: ['Nevera Real', 'Congelador Mágico', 'Heladera de Hielo', 'Caja Fría'],
+      microwave: ['Microondas Veloz', 'Horno Rápido', 'Calentador Mágico', 'Micro de Batalla'],
+      sink: ['Lavaplatos Real', 'Pileta Mágica', 'Fregadero Urbano', 'Pila de Agua'],
+      toilet: ['Trono Real', 'Sanitario Místico', 'Baño de Poder', 'Retrete Legendario'],
+      bed: ['Cama de Ensueño', 'Lecho Místico', 'Cama Real', 'Descanso Eterno'],
+      couch: ['Sofá Real', 'Diván Místico', 'Sillón de Poder', 'Asiento de Descanso'],
+      'dining table': ['Mesa Real', 'Tabla de Festines', 'Mesa de Batalla', 'Mesa Mística'],
+      // Default para cualquier otro objeto
+      default: ['Objeto Misterioso', 'Artefacto Curioso', 'Reliquia Urbana', 'Hallazgo Inesperado', 'Cosa Extraña', 'Objeto Encantado']
     };
 
     const BASE_VALUES = {
-      calle:[8000,15000,22000,35000,50000],casa:[5000,12000,18000,25000,40000],
-      trabajo:[10000,20000,30000,45000,60000],otro:[3000,8000,15000,25000,40000]
+      calle: [8000, 15000, 22000, 35000, 50000],
+      casa: [5000, 12000, 18000, 25000, 40000],
+      trabajo: [10000, 20000, 30000, 45000, 60000],
+      otro: [3000, 8000, 15000, 25000, 40000]
     };
 
     const RARITY_TABLE = [
-      {name:'COMÚN',class:'rarity-common',weight:60},
-      {name:'RARO',class:'rarity-rare',weight:25},
-      {name:'ÉPICO',class:'rarity-epic',weight:12},
-      {name:'LEGENDARIO',class:'rarity-legendary',weight:3}
+      { name: 'COMÚN', class: 'rarity-common', weight: 60 },
+      { name: 'RARO', class: 'rarity-rare', weight: 25 },
+      { name: 'ÉPICO', class: 'rarity-epic', weight: 12 },
+      { name: 'LEGENDARIO', class: 'rarity-legendary', weight: 3 }
     ];
 
-    const RARITY_IDX = { 'COMÚN':0,'RARO':1,'ÉPICO':2,'LEGENDARIO':3 };
+    // Nombres tipo "brainrot" para las fusiones
+    const BRAINROOT_WORDS = [
+      'Tralalero', 'Bombardino', 'Tungtung', 'Capuchino', 'Ballerina', 'Lirili',
+      'Trippi', 'Bombombini', 'Sahur', 'Girafferro', 'Chimpanzini', 'Crocodillo',
+      'Frigo', 'Pandaccini', 'Espresso', 'Brr Brr'
+    ];
 
-    // ==================== MODEL ====================
+    // ==================== INIT MODEL ====================
     async function loadModel() {
       try {
         model = await cocoSsd.load();
         isModelLoading = false;
         document.getElementById('modelStatus').classList.add('ready');
-        document.getElementById('modelStatusText').textContent = 'IA lista';
-        document.getElementById('btnShutter').disabled = false;
-        showToast('IA cargada. Apunta a un objeto');
+        document.getElementById('modelStatusText').textContent = 'IA lista para detectar';
+        showToast('Modelo de IA cargado. ¡Apunta la cámara a un objeto!');
         startDetectionLoop();
-      } catch(err) {
-        document.getElementById('modelStatusText').textContent = 'Error IA';
-        showToast('Error cargando modelo');
+      } catch (err) {
+        console.error(err);
+        document.getElementById('modelStatusText').textContent = 'Error cargando IA';
+        showToast('Error cargando modelo. Recarga la página.');
       }
     }
 
-    let lastDetect = 0;
+    // Detección en tiempo real
+    let detectionFrame = null;
     async function startDetectionLoop() {
-      if(!model || !stream) return;
+      if (!model || !stream) return;
       const video = document.getElementById('video');
-      const canvas = document.getElementById('overlayCanvas');
-      if(video.readyState < 2) { requestAnimationFrame(startDetectionLoop); return; }
-
-      const wrap = document.getElementById('cameraWrap');
-      if(canvas.width !== wrap.clientWidth || canvas.height !== wrap.clientHeight) {
-        canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight;
+      if (video.readyState < 2) {
+        detectionFrame = requestAnimationFrame(startDetectionLoop);
+        return;
       }
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      if(Date.now() - lastDetect > 400) {
-        lastDetect = Date.now();
+      // Detectar cada 500ms para no saturar
+      if (!window.lastDetect || Date.now() - window.lastDetect > 500) {
+        window.lastDetect = Date.now();
         try {
-          const preds = await model.detect(video);
-          lastDetection = preds.sort((a,b)=>b.score-a.score)[0] || null;
-          drawOverlay(preds);
-        } catch(e){}
+          const predictions = await model.detect(video);
+          drawDetections(predictions);
+        } catch (e) { console.error(e); }
       }
-      requestAnimationFrame(startDetectionLoop);
+      detectionFrame = requestAnimationFrame(startDetectionLoop);
     }
 
-    function drawOverlay(predictions) {
-      const canvas = document.getElementById('overlayCanvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.getElementById('video');
-      const wrap = document.getElementById('cameraWrap');
+    function drawDetections(predictions) {
+      // Limpiar detecciones anteriores
+      document.querySelectorAll('.detection-box').forEach(el => el.remove());
 
-      const vr = video.videoWidth / video.videoHeight;
-      const cr = wrap.clientWidth / wrap.clientHeight;
-      let dw, dh, ox, oy;
-      if(vr > cr) { dh = wrap.clientHeight; dw = dh * vr; ox = (wrap.clientWidth - dw)/2; oy = 0; }
-      else { dw = wrap.clientWidth; dh = dw / vr; ox = 0; oy = (wrap.clientHeight - dh)/2; }
-
-      const sx = dw / video.videoWidth;
-      const sy = dh / video.videoHeight;
-
-      if(predictions.length === 0) {
+      if (predictions.length === 0) {
         document.getElementById('cameraHint').textContent = 'Centra el objeto en el marco';
         return;
       }
 
-      const best = predictions.sort((a,b)=>b.score-a.score)[0];
-      if(best.score < 0.30) {
+      const container = document.getElementById('cameraContainer');
+      const rect = container.getBoundingClientRect();
+      const video = document.getElementById('video');
+      const scaleX = rect.width / video.videoWidth;
+      const scaleY = rect.height / video.videoHeight;
+
+      // Tomar la detección con mayor confianza
+      const best = predictions.sort((a, b) => b.score - a.score)[0];
+      if (best.score < 0.4) {
         document.getElementById('cameraHint').textContent = 'Acércate más al objeto...';
         return;
       }
 
-      const [x,y,w,h] = best.bbox;
-      const bx = ox + x * sx;
-      const by = oy + y * sy;
-      const bw = w * sx;
-      const bh = h * sy;
+      const [x, y, w, h] = best.bbox;
+      const box = document.createElement('div');
+      box.className = 'detection-box';
+      box.style.left = (x * scaleX) + 'px';
+      box.style.top = (y * scaleY) + 'px';
+      box.style.width = (w * scaleX) + 'px';
+      box.style.height = (h * scaleY) + 'px';
 
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,212,170,0.6)'; ctx.shadowBlur = 15;
-      ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 3;
-      ctx.strokeRect(bx, by, bw, bh);
-      ctx.restore();
-
+      const label = document.createElement('div');
+      label.className = 'detection-label';
       const esName = LABEL_ES[best.class] || best.class;
-      const label = `${esName} ${Math.round(best.score*100)}%`;
-      ctx.font = 'bold 13px -apple-system, sans-serif';
-      const tw = ctx.measureText(label).width + 16;
-      const th = 26;
-      const lx = bx;
-      const ly = by - th - 6;
-      ctx.fillStyle = '#00d4aa';
-      ctx.beginPath();
-      ctx.roundRect(lx, ly, tw, th, 6);
-      ctx.fill();
-      ctx.fillStyle = '#0f0f23';
-      ctx.fillText(label, lx + 8, ly + 18);
+      label.textContent = `${esName} (${Math.round(best.score * 100)}%)`;
+      box.appendChild(label);
+      container.appendChild(box);
 
-      document.getElementById('cameraHint').textContent = `¡${esName} detectado! Toca para capturar`;
+      document.getElementById('cameraHint').textContent = `¡${esName} detectado! Toca el botón para capturar`;
     }
 
-    // ==================== NAV ====================
+    // ==================== NAVIGATION ====================
     function goTo(screenName) {
-      document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-      const target = document.getElementById('screen-'+screenName);
-      if(target) target.classList.add('active');
-      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.screen===screenName));
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(`screen-${screenName}`).classList.add('active');
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.screen === screenName));
 
-      if(screenName==='camera'){ startCamera(); if(model && !isModelLoading) startDetectionLoop(); }
-      if(screenName==='gallery') renderGallery();
-      if(screenName==='combine') renderCombine();
-      if(screenName!=='camera') stopCamera();
+      if (screenName === 'camera') {
+        startCamera();
+        if (model && !isModelLoading) startDetectionLoop();
+      }
+      if (screenName === 'gallery') renderGallery();
+      if (screenName !== 'camera') {
+        stopCamera();
+        if (detectionFrame) cancelAnimationFrame(detectionFrame);
+      }
     }
 
     // ==================== CAMERA ====================
+    const video = document.getElementById('video');
+    const canvasSnap = document.getElementById('canvas-snap');
+    const btnShutter = document.getElementById('btnShutter');
+
     async function startCamera() {
       try {
-        if(stream) return;
+        if (stream) return;
         stream = await navigator.mediaDevices.getUserMedia({
-          video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
         });
-        document.getElementById('video').srcObject = stream;
-        document.getElementById('btnShutter').disabled = isModelLoading;
-      } catch(err){ showToast('No se pudo acceder a la cámara'); }
+        video.srcObject = stream;
+        btnShutter.disabled = isModelLoading;
+      } catch (err) {
+        showToast('No se pudo acceder a la cámara. Verifica los permisos.');
+        console.error(err);
+      }
     }
-    function stopCamera(){
-      if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; document.getElementById('video').srcObject=null; }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        video.srcObject = null;
+      }
     }
 
-    document.getElementById('btnShutter').addEventListener('click', async ()=>{
-      if(!stream || isModelLoading) return;
+    btnShutter.addEventListener('click', async () => {
+      if (!stream || isModelLoading) return;
 
-      const video = document.getElementById('video');
-      const c = document.getElementById('canvas-snap');
-      c.width = video.videoWidth || 640;
-      c.height = video.videoHeight || 480;
-      c.getContext('2d').drawImage(video,0,0,c.width,c.height);
+      // Capturar frame
+      const w = video.videoWidth || 640;
+      const h = video.videoHeight || 480;
+      canvasSnap.width = w;
+      canvasSnap.height = h;
+      const ctx = canvasSnap.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      capturedBlob = canvasSnap.toDataURL('image/jpeg', 0.9);
 
+      // Detener cámara y detección
       stopCamera();
+      if (detectionFrame) cancelAnimationFrame(detectionFrame);
+      document.querySelectorAll('.detection-box').forEach(el => el.remove());
 
-      // Detectar en la foto capturada
-      const preds = await model.detect(c);
-      const best = preds.sort((a,b)=>b.score-a.score)[0];
+      // Analizar con IA
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('loadingText').textContent = 'Analizando objeto con IA...';
 
-      if(best && best.score > 0.25) {
+      // Pequeña pausa para que el UI responda
+      await new Promise(r => setTimeout(r, 100));
+
+      const predictions = await model.detect(canvasSnap);
+      const best = predictions.sort((a, b) => b.score - a.score)[0];
+
+      if (best && best.score > 0.3) {
         detectedLabel = best.class;
         detectionConfidence = best.score;
-        // RECORTAR AUTOMÁTICAMENTE al bounding box detectado
-        const [x, y, w, h] = best.bbox;
-        const pad = Math.min(w, h) * 0.15; // 15% padding
-        const rx = Math.max(0, x - pad);
-        const ry = Math.max(0, y - pad);
-        const rw = Math.min(c.width - rx, w + pad*2);
-        const rh = Math.min(c.height - ry, h + pad*2);
-
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = rw; cropCanvas.height = rh;
-        cropCanvas.getContext('2d').drawImage(c, rx, ry, rw, rh, 0, 0, rw, rh);
-        capturedBlob = cropCanvas.toDataURL('image/jpeg', 0.92);
       } else {
         detectedLabel = 'unknown';
         detectionConfidence = 0;
-        capturedBlob = c.toDataURL('image/jpeg', 0.92); // imagen completa como fallback
       }
 
-      initEditor();
+      generateSticker();
     });
 
-    // ==================== EDITOR ====================
-    function initEditor() {
-      editorTransform = { zoom:1, rot:0, panX:0, panY:0, bright:0 };
-      document.getElementById('zoomSlider').value = 1;
-      document.getElementById('rotSlider').value = 0;
-      document.getElementById('brightSlider').value = 0;
-      updateSliderLabels();
+    // ==================== STICKER GENERATOR ====================
+    function generateSticker() {
+      const img = new Image();
+      img.onload = () => {
+        const size = 512;
+        const c = document.getElementById('stickerCanvas');
+        c.width = size; c.height = size;
+        const ctx = c.getContext('2d');
 
-      editorImage = new Image();
-      editorImage.onload = () => {
-        renderEditor();
-        goTo('editor');
+        ctx.clearRect(0, 0, size, size);
+
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+
+        const r = 60;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(size - r, 0);
+        ctx.quadraticCurveTo(size, 0, size, r);
+        ctx.lineTo(size, size - r);
+        ctx.quadraticCurveTo(size, size, size - r, size);
+        ctx.lineTo(r, size);
+        ctx.quadraticCurveTo(0, size, 0, size - r);
+        ctx.lineTo(0, r);
+        ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath();
+        ctx.save();
+        ctx.clip();
+
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+        ctx.restore();
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 16;
+        ctx.stroke();
+        ctx.restore();
+
+        const grad = ctx.createLinearGradient(0, 0, size, size);
+        grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Generar rarity y valor
+        currentRarity = rollRarity();
+        const category = inferCategory(detectedLabel);
+        document.getElementById('inputCategory').value = category;
+        const value = rollValue(category, currentRarity);
+        document.getElementById('inputValue').value = formatMoney(value);
+
+        // Nombre creativo basado en detección
+        const creativeName = generateCreativeName(detectedLabel, category);
+        document.getElementById('inputName').value = creativeName;
+
+        // Mostrar detección
+        const esLabel = LABEL_ES[detectedLabel] || detectedLabel;
+        document.getElementById('detectedObject').textContent =
+          detectedLabel === 'unknown'
+            ? 'No se detectó con certeza — edita el nombre'
+            : `${esLabel} (${Math.round(detectionConfidence * 100)}% confianza)`;
+
+        document.getElementById('rarityBadge').textContent = currentRarity.name;
+        document.getElementById('rarityBadge').style.background = getRarityColor(currentRarity.name);
+
+        document.getElementById('loading').classList.add('hidden');
+        goTo('preview');
       };
-      editorImage.src = capturedBlob;
+      img.src = capturedBlob;
     }
 
-    function renderEditor() {
-      const canvas = document.getElementById('editorCanvas');
-      const wrap = document.getElementById('editorStage');
-      canvas.width = wrap.clientWidth;
-      canvas.height = wrap.clientHeight;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
+    function inferCategory(label) {
+      const street = ['traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'car', 'bus', 'truck', 'motorcycle', 'bicycle'];
+      const home = ['bed', 'couch', 'chair', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'clock', 'vase', 'book', 'potted plant'];
+      const work = ['laptop', 'mouse', 'keyboard', 'cell phone', 'book', 'clock', 'backpack', 'tie', 'suitcase'];
 
-      ctx.clearRect(0,0,w,h);
-
-      const ir = editorImage.width / editorImage.height;
-      const cr = w / h;
-      let baseW, baseH;
-      if(ir > cr) { baseH = h; baseW = h * ir; }
-      else { baseW = w; baseH = w / ir; }
-
-      ctx.save();
-      ctx.translate(w/2 + editorTransform.panX, h/2 + editorTransform.panY);
-      ctx.rotate(editorTransform.rot * Math.PI / 180);
-      ctx.scale(editorTransform.zoom, editorTransform.zoom);
-      if(editorTransform.bright !== 0) ctx.filter = `brightness(${100+editorTransform.bright}%)`;
-      ctx.drawImage(editorImage, -baseW/2, -baseH/2, baseW, baseH);
-      ctx.restore();
-    }
-
-    function updateSliderLabels() {
-      document.getElementById('zoomVal').textContent = parseFloat(document.getElementById('zoomSlider').value).toFixed(2)+'x';
-      document.getElementById('rotVal').textContent = document.getElementById('rotSlider').value+'°';
-      document.getElementById('brightVal').textContent = (document.getElementById('brightSlider').value>0?'+':'')+document.getElementById('brightSlider').value+'%';
-    }
-
-    ['zoomSlider','rotSlider','brightSlider'].forEach(id=>{
-      document.getElementById(id).addEventListener('input', ()=>{
-        editorTransform.zoom = parseFloat(document.getElementById('zoomSlider').value);
-        editorTransform.rot = parseFloat(document.getElementById('rotSlider').value);
-        editorTransform.bright = parseFloat(document.getElementById('brightSlider').value);
-        updateSliderLabels();
-        renderEditor();
-      });
-    });
-
-    // Pan
-    const editorStage = document.getElementById('editorStage');
-    editorStage.addEventListener('touchstart', e=>{
-      if(e.touches.length===1){ isDragging=true; dragStart={x:e.touches[0].clientX, y:e.touches[0].clientY}; }
-    },{passive:true});
-    editorStage.addEventListener('touchmove', e=>{
-      if(!isDragging) return;
-      const dx = e.touches[0].clientX - dragStart.x;
-      const dy = e.touches[0].clientY - dragStart.y;
-      editorTransform.panX += dx; editorTransform.panY += dy;
-      dragStart = {x:e.touches[0].clientX, y:e.touches[0].clientY};
-      renderEditor();
-    },{passive:true});
-    editorStage.addEventListener('touchend', ()=>isDragging=false);
-    editorStage.addEventListener('mousedown', e=>{ isDragging=true; dragStart={x:e.clientX,y:e.clientY}; });
-    window.addEventListener('mousemove', e=>{
-      if(!isDragging) return;
-      editorTransform.panX += e.clientX - dragStart.x;
-      editorTransform.panY += e.clientY - dragStart.y;
-      dragStart={x:e.clientX,y:e.clientY};
-      renderEditor();
-    });
-    window.addEventListener('mouseup', ()=>isDragging=false);
-
-    document.getElementById('btnEditorConfirm').addEventListener('click', generateFinalSticker);
-
-    // ==================== FINAL STICKER ====================
-    function generateFinalSticker() {
-      const size = 512;
-      const c = document.getElementById('stickerCanvas');
-      c.width = size; c.height = size;
-      const ctx = c.getContext('2d');
-
-      // Fondo transparente
-      ctx.clearRect(0,0,size,size);
-
-      // Clip redondeado
-      const r = 60;
-      ctx.beginPath();
-      ctx.moveTo(r,0); ctx.lineTo(size-r,0);
-      ctx.quadraticCurveTo(size,0,size,r);
-      ctx.lineTo(size,size-r); ctx.quadraticCurveTo(size,size,size-r,size);
-      ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
-      ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
-      ctx.closePath();
-      ctx.save(); ctx.clip();
-
-      // Dibujar imagen transformada
-      const ir = editorImage.width / editorImage.height;
-      let baseW, baseH;
-      if(ir > 1) { baseH = size; baseW = size * ir; }
-      else { baseW = size; baseH = size / ir; }
-
-      ctx.save();
-      ctx.translate(size/2 + editorTransform.panX * (size/300), size/2 + editorTransform.panY * (size/300));
-      ctx.rotate(editorTransform.rot * Math.PI / 180);
-      ctx.scale(editorTransform.zoom, editorTransform.zoom);
-      if(editorTransform.bright !== 0) ctx.filter = `brightness(${100+editorTransform.bright}%)`;
-      ctx.drawImage(editorImage, -baseW/2, -baseH/2, baseW, baseH);
-      ctx.restore();
-      ctx.restore(); // restore clip
-
-      // CONTORNO BLANCO + SOMBRA EXTERNA
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 24;
-      ctx.shadowOffsetY = 12;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 20;
-      ctx.lineJoin = 'round';
-      // Redibujar el path para el borde
-      ctx.beginPath();
-      ctx.moveTo(r,0); ctx.lineTo(size-r,0);
-      ctx.quadraticCurveTo(size,0,size,r);
-      ctx.lineTo(size,size-r); ctx.quadraticCurveTo(size,size,size-r,size);
-      ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
-      ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.restore();
-
-      // Brillo sutil
-      const grad = ctx.createLinearGradient(0,0,size,size);
-      grad.addColorStop(0,'rgba(255,255,255,0.12)');
-      grad.addColorStop(0.5,'rgba(255,255,255,0)');
-      grad.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Metadata
-      currentRarity = rollRarity();
-      const category = inferCategory(detectedLabel);
-      document.getElementById('inputCategory').value = category;
-      const value = rollValue(category, currentRarity);
-      document.getElementById('inputValue').value = formatMoney(value);
-
-      const creativeName = generateCreativeName(detectedLabel, category);
-      document.getElementById('inputName').value = creativeName;
-
-      const esLabel = LABEL_ES[detectedLabel] || detectedLabel;
-      document.getElementById('detectedObject').textContent = detectedLabel==='unknown'
-        ? 'No detectado con certeza — edita el nombre'
-        : `${esLabel} (${Math.round(detectionConfidence*100)}% confianza)`;
-
-      document.getElementById('rarityBadge').textContent = currentRarity.name;
-      document.getElementById('rarityBadge').style.background = getRarityColor(currentRarity.name);
-
-      goTo('preview');
-    }
-
-    function inferCategory(label){
-      const street=['traffic light','fire hydrant','stop sign','parking meter','bench','car','bus','truck','motorcycle','bicycle'];
-      const home=['bed','couch','chair','dining table','toilet','tv','laptop','mouse','remote','keyboard','cell phone','microwave','oven','toaster','sink','refrigerator','clock','vase','book','potted plant'];
-      const work=['laptop','mouse','keyboard','cell phone','book','clock','backpack','tie','suitcase'];
-      if(street.includes(label)) return 'calle';
-      if(home.includes(label)) return 'casa';
-      if(work.includes(label)) return 'trabajo';
+      if (street.includes(label)) return 'calle';
+      if (home.includes(label)) return 'casa';
+      if (work.includes(label)) return 'trabajo';
       return 'otro';
     }
-    function generateCreativeName(label, cat){
+
+    function generateCreativeName(label, category) {
       const names = CREATIVE_NAMES[label] || CREATIVE_NAMES.default;
-      const base = names[Math.floor(Math.random()*names.length)];
-      const sfx = { 'COMÚN':['','Básico'],'RARO':['Raro','Especial'],'ÉPICO':['Épico','Supremo'],'LEGENDARIO':['Legendario','Mítico'] };
-      const s = sfx[currentRarity.name][Math.floor(Math.random()*sfx[currentRarity.name].length)];
-      return s ? `${base} ${s}` : base;
+      const base = names[Math.floor(Math.random() * names.length)];
+
+      // Añadir sufijo según rareza
+      const suffixes = {
+        'COMÚN': ['', 'Común', 'Básico'],
+        'RARO': ['Raro', 'Especial', 'Plus'],
+        'ÉPICO': ['Épico', 'Supremo', 'Elite'],
+        'LEGENDARIO': ['Legendario', 'Mítico', 'Divino']
+      };
+      const suffix = suffixes[currentRarity.name][Math.floor(Math.random() * suffixes[currentRarity.name].length)];
+      return suffix ? `${base} ${suffix}` : base;
     }
-    function rollRarity(){
-      const rand=Math.random()*100; let acc=0;
-      for(const r of RARITY_TABLE){ acc+=r.weight; if(rand<=acc) return r; }
+
+    function rollRarity() {
+      const rand = Math.random() * 100;
+      let acc = 0;
+      for (const r of RARITY_TABLE) {
+        acc += r.weight;
+        if (rand <= acc) return r;
+      }
       return RARITY_TABLE[0];
     }
-    function rollValue(cat, rarity){
-      const base=BASE_VALUES[cat]||BASE_VALUES.otro;
-      const idx=RARITY_TABLE.findIndex(r=>r.name===rarity.name);
-      const val=base[Math.min(idx,base.length-1)];
-      return Math.round(val*(0.85+Math.random()*0.3));
-    }
-    function formatMoney(n){ return '$'+n.toLocaleString('es-CL'); }
-    function getRarityColor(name){
-      const map={'COMÚN':'#888','RARO':'#3498db','ÉPICO':'#9b59b6','LEGENDARIO':'#ffd700'};
-      return map[name]||'#888';
+
+    function rollValue(category, rarity) {
+      const base = BASE_VALUES[category] || BASE_VALUES.otro;
+      const idx = RARITY_TABLE.findIndex(r => r.name === rarity.name);
+      const val = base[Math.min(idx, base.length - 1)];
+      return Math.round(val * (0.85 + Math.random() * 0.3));
     }
 
-    // ==================== SAVE (CORREGIDO) ====================
-    document.getElementById('btnSave').addEventListener('click', function saveItem(){
-      try {
-        const name = document.getElementById('inputName').value.trim() || 'Objeto sin nombre';
-        const valueStr = document.getElementById('inputValue').value;
-        const category = document.getElementById('inputCategory').value;
-        const stickerCanvas = document.getElementById('stickerCanvas');
+    function formatMoney(n) {
+      return '$' + n.toLocaleString('es-CL');
+    }
 
-        // Verificar que el canvas tenga contenido
-        const pixelCheck = stickerCanvas.getContext('2d').getImageData(0,0,1,1).data;
-        const stickerData = stickerCanvas.toDataURL('image/png');
+    function getRarityColor(name) {
+      const map = { 'COMÚN': '#888', 'RARO': '#3498db', 'ÉPICO': '#9b59b6', 'LEGENDARIO': '#ffd700' };
+      return map[name] || '#888';
+    }
 
-        const item = {
-          id: Date.now(),
-          name: name,
-          value: valueStr,
-          rawValue: parseInt(valueStr.replace(/\D/g,'')) || 0,
-          category: category,
-          rarity: currentRarity,
-          detectedLabel: detectedLabel,
-          detectionConfidence: detectionConfidence,
-          image: stickerData,
-          original: capturedBlob,
-          created: new Date().toISOString(),
-          type: 'object',
-          parents: null
-        };
+    // ==================== SAVE ====================
+    document.getElementById('btnSave').addEventListener('click', () => {
+      const name = document.getElementById('inputName').value.trim() || 'Objeto sin nombre';
+      const valueStr = document.getElementById('inputValue').value;
+      const category = document.getElementById('inputCategory').value;
+      const stickerCanvas = document.getElementById('stickerCanvas');
+      const stickerData = stickerCanvas.toDataURL('image/png');
 
-        const gallery = getGallery();
-        gallery.unshift(item);
-        localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+      const item = {
+        id: Date.now(),
+        name,
+        value: valueStr,
+        rawValue: parseInt(valueStr.replace(/\D/g, '')),
+        category,
+        rarity: currentRarity,
+        detectedLabel,
+        detectionConfidence,
+        image: stickerData,
+        original: capturedBlob,
+        created: new Date().toISOString()
+      };
 
-        updateTotalValue();
-        showToast('¡' + name + ' guardado en galería!');
-        goTo('gallery');
-      } catch(err) {
-        console.error('Error guardando:', err);
-        showToast('Error al guardar: ' + err.message);
-      }
+      const gallery = getGallery();
+      gallery.unshift(item);
+      localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+
+      updateTotalValue();
+      showToast(`¡${name} guardado!`);
+      goTo('gallery');
     });
 
-    function getGallery(){
-      try {
-        const raw = localStorage.getItem(DB_KEY);
-        return raw ? JSON.parse(raw) : [];
-      } catch(e) {
-        console.error('Error leyendo galería:', e);
-        return [];
-      }
+    document.getElementById('btnSaveFusion').addEventListener('click', () => {
+      if (!pendingFusion || !pendingFusion.rarity) return;
+
+      const { itemA, itemB, rarity, value } = pendingFusion;
+      const name = document.getElementById('fusionInputName').value.trim() || 'Brainroot sin nombre';
+      const valueStr = document.getElementById('fusionInputValue').value;
+      const canvas = document.getElementById('fusionCanvas');
+      const stickerData = canvas.toDataURL('image/png');
+
+      const newItem = {
+        id: Date.now(),
+        name,
+        value: valueStr,
+        rawValue: parseInt(valueStr.replace(/\D/g, '')) || value,
+        category: 'brainroot',
+        rarity,
+        detectedLabel: `${itemA.detectedLabel}+${itemB.detectedLabel}`,
+        detectionConfidence: Math.min(itemA.detectionConfidence || 0, itemB.detectionConfidence || 0),
+        type: 'brainroot',
+        parents: [itemA.id, itemB.id],
+        image: stickerData,
+        original: null,
+        created: new Date().toISOString()
+      };
+
+      // Consumir los 2 objetos originales y agregar el Brainroot
+      let gallery = getGallery();
+      gallery = gallery.filter(i => i.id !== itemA.id && i.id !== itemB.id);
+      gallery.unshift(newItem);
+      localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+
+      updateTotalValue();
+      showToast(`¡${name} creado! 🧬`);
+
+      pendingFusion = null;
+      goTo('gallery');
+    });
+
+    function getGallery() {
+      try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; } catch { return []; }
     }
-    function updateTotalValue(){
+
+    function updateTotalValue() {
       const total = getGallery().reduce((sum, item) => sum + (item.rawValue || 0), 0);
       document.getElementById('totalValue').textContent = formatMoney(total);
     }
 
-    // ==================== GALLERÍA ====================
-    function renderGallery(){
+    // ==================== GALLERY ====================
+    function renderGallery() {
       const gallery = getGallery();
       const grid = document.getElementById('galleryGrid');
       const empty = document.getElementById('emptyState');
-      updateTotalValue();
+      const toggleBtn = document.getElementById('btnFusionToggle');
 
-      if(gallery.length === 0){
+      updateTotalValue();
+      toggleBtn.disabled = gallery.length < 2 && !fusionMode;
+
+      if (gallery.length === 0) {
         grid.innerHTML = '';
         empty.classList.remove('hidden');
         return;
       }
       empty.classList.add('hidden');
 
-      grid.innerHTML = gallery.map(item => `
-        <div class="gallery-item" onclick="viewItem(${item.id})">
-          <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
-          <div class="gallery-type">${item.type==='brainroot'?'⚡ Brainroot':'📷 Objeto'}</div>
-          <div class="gallery-rarity ${item.rarity?.class || 'rarity-common'}"></div>
-          <div class="gallery-info">
-            <div class="gallery-name">${escapeHtml(item.name)}</div>
-            <div class="gallery-value">${item.value}</div>
+      grid.innerHTML = gallery.map(item => {
+        const selected = fusionSelection.includes(item.id);
+        const selCls = fusionMode ? (selected ? ' selectable selected' : ' selectable') : '';
+        const isBrainroot = item.type === 'brainroot';
+        const cornerTag = fusionMode
+          ? `<div class="select-check">${selected ? '✓' : ''}</div>`
+          : (isBrainroot ? `<div class="brainroot-tag">BRAINROOT</div>` : '');
+        return `
+          <div class="gallery-item${selCls}" onclick="onGalleryItemClick(${item.id})">
+            <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
+            ${cornerTag}
+            <div class="gallery-rarity ${item.rarity.class || 'rarity-common'}"></div>
+            <div class="gallery-info">
+              <div class="gallery-name">${escapeHtml(item.name)}</div>
+              <div class="gallery-value">${item.value}</div>
+            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+
+      if (fusionMode) updateFusionBar();
     }
-    function viewItem(id){
+
+    function onGalleryItemClick(id) {
+      if (!fusionMode) { viewItem(id); return; }
+
+      const idx = fusionSelection.indexOf(id);
+      if (idx > -1) {
+        fusionSelection.splice(idx, 1);
+      } else {
+        if (fusionSelection.length >= 2) {
+          showToast('Solo puedes seleccionar 2 objetos');
+          return;
+        }
+        fusionSelection.push(id);
+      }
+      renderGallery();
+    }
+
+    function viewItem(id) {
       const item = getGallery().find(i => i.id === id);
-      if(!item) return;
-      showToast(`${item.name} — ${item.value}`);
+      if (!item) return;
+      if (item.type === 'brainroot') {
+        showToast(`${item.name} — ${item.value} — Brainroot fusionado`);
+        return;
+      }
+      const esLabel = LABEL_ES[item.detectedLabel] || item.detectedLabel;
+      showToast(`${item.name} — ${item.value} — Detectado: ${esLabel}`);
     }
-    function escapeHtml(text){
+
+    function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
     }
 
-    // ==================== COMBINAR ====================
-    function renderCombine(){
-      slotA = null; slotB = null;
-      updateSlots();
-      document.getElementById('fusionResult').classList.add('hidden');
-    }
-    function updateSlots(){
-      ['A','B'].forEach(s => {
-        const el = document.getElementById('slot'+s);
-        const slot = s==='A' ? slotA : slotB;
-        if(slot){
-          el.innerHTML = `<img src="${slot.image}" alt=""><div class="slot-label" style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);padding:4px;font-size:0.7rem;">${escapeHtml(slot.name)}</div>`;
-          el.classList.add('filled');
-        } else {
-          el.innerHTML = `<span class="slot-label">Toca para seleccionar objeto ${s==='A'?1:2}</span>`;
-          el.classList.remove('filled');
-        }
-      });
-      if(slotA && slotB) showFusionPreview();
-      else document.getElementById('fusionResult').classList.add('hidden');
-    }
-
-    let pickingFor = null;
-    function openPicker(slot){ pickingFor = slot; renderPicker(); goTo('picker'); }
-    function closePicker(){ goTo('combine'); }
-    function renderPicker(){
-      const objects = getGallery().filter(i => i.type === 'object');
-      const grid = document.getElementById('pickerGrid');
-      if(objects.length === 0){
-        grid.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px;">No tienes objetos para combinar</p>';
+    // ==================== FUSIÓN / BRAINROOT ====================
+    function toggleFusionMode() {
+      const gallery = getGallery();
+      if (!fusionMode && gallery.length < 2) {
+        showToast('Necesitas al menos 2 objetos para fusionar');
         return;
       }
-      grid.innerHTML = objects.map(item => `
-        <div class="gallery-item" onclick="pickItem(${item.id})">
-          <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
-          <div class="gallery-rarity ${item.rarity?.class || 'rarity-common'}"></div>
-          <div class="gallery-info">
-            <div class="gallery-name">${escapeHtml(item.name)}</div>
-            <div class="gallery-value">${item.value}</div>
-          </div>
-        </div>
-      `).join('');
-    }
-    function pickItem(id){
-      const item = getGallery().find(i => i.id === id);
-      if(!item) return;
-      if(pickingFor === 'A') slotA = item;
-      if(pickingFor === 'B') slotB = item;
-      closePicker();
+      fusionMode = !fusionMode;
+      fusionSelection = [];
+
+      const toggleBtn = document.getElementById('btnFusionToggle');
+      toggleBtn.classList.toggle('active', fusionMode);
+      toggleBtn.textContent = fusionMode ? '✕ Cancelar' : '🧬 Fusionar';
+      document.getElementById('fusionBar').classList.toggle('hidden', !fusionMode);
+
+      renderGallery();
+      if (fusionMode) updateFusionBar();
     }
 
-    let fusionData = null;
-    function showFusionPreview(){
-      if(!slotA || !slotB) return;
-      document.getElementById('fusionResult').classList.remove('hidden');
-
-      const rA = RARITY_IDX[slotA.rarity?.name] || 0;
-      const rB = RARITY_IDX[slotB.rarity?.name] || 0;
-      const newRarityIdx = calculateFusionRarity(rA, rB);
-      const newRarity = RARITY_TABLE[newRarityIdx];
-      const bonus = newRarityIdx > Math.max(rA, rB) ? 1.3 : 1.15;
-      const fusedValue = Math.round((slotA.rawValue + slotB.rawValue) * bonus);
-      const fusedName = generateBrainrootName(slotA, slotB, newRarityIdx);
-
-      // Generar imagen con IA
-      const prompt = generateFusionPrompt(slotA, slotB, fusedName, newRarity.name);
-      const seed = Math.floor(Math.random() * 99999);
-      const encodedPrompt = encodeURIComponent(prompt);
-      const fusionImageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&negative_prompt=blurry,low quality,text,watermark,signature`;
-
-      const img = document.getElementById('brainrootImg');
-      const canvas = document.getElementById('brainrootCanvas');
-      img.style.display = 'none';
-      canvas.style.display = 'block';
-      drawFusionPlaceholder(canvas, newRarityIdx);
-
-      img.onload = () => {
-        img.style.display = 'block';
-        canvas.style.display = 'none';
-        document.getElementById('loading').classList.add('hidden');
-      };
-      img.onerror = () => {
-        showToast('La IA tardó demasiado. Intenta de nuevo.');
-        document.getElementById('loading').classList.add('hidden');
-      };
-
-      document.getElementById('loading').classList.remove('hidden');
-      document.getElementById('loadingText').textContent = '🎨 La IA está creando tu Brainroot...';
-      img.src = fusionImageUrl;
-
-      document.getElementById('brainrootName').textContent = fusedName;
-      document.getElementById('brainrootRarity').textContent = newRarity.name;
-      document.getElementById('brainrootRarity').style.color = getRarityColor(newRarity.name);
-      document.getElementById('brainrootValue').textContent = formatMoney(fusedValue);
-      document.getElementById('recipeHint').innerHTML = `
-        <strong>Receta:</strong> ${escapeHtml(slotA.name)} + ${escapeHtml(slotB.name)}<br>
-        <strong>Bonus de fusión:</strong> ${Math.round((bonus-1)*100)}% de valor extra
-      `;
-
-      fusionData = { name: fusedName, rarity: newRarity, value: fusedValue, parents: [slotA.id, slotB.id], prompt: prompt };
+    function updateFusionBar() {
+      document.getElementById('fusionCount').textContent = fusionSelection.length;
+      document.getElementById('btnDoFuse').disabled = fusionSelection.length !== 2;
     }
 
-    function drawFusionPlaceholder(canvas, rarityIdx){
-      const ctx = canvas.getContext('2d');
-      canvas.width = 512; canvas.height = 512;
-      const colors = ['#888','#3498db','#9b59b6','#ffd700'];
-      const glow = colors[rarityIdx];
+    function confirmFusionSelection() {
+      if (fusionSelection.length !== 2) return;
+      const gallery = getGallery();
+      const itemA = gallery.find(i => i.id === fusionSelection[0]);
+      const itemB = gallery.find(i => i.id === fusionSelection[1]);
+      if (!itemA || !itemB) return;
 
-      const grad = ctx.createRadialGradient(256,256,50,256,256,300);
-      grad.addColorStop(0, glow+'44');
-      grad.addColorStop(1, '#0f0f23');
-      ctx.fillStyle = grad; ctx.fillRect(0,0,512,512);
+      pendingFusion = { itemA, itemB };
 
-      const imgA = new Image(); imgA.src = slotA.image;
-      const imgB = new Image(); imgB.src = slotB.image;
-      let loaded = 0;
-      const onLoad = () => {
-        loaded++;
-        if(loaded < 2) return;
-        ctx.save(); ctx.translate(140,256); ctx.rotate(-0.15); ctx.drawImage(imgA, -70,-70,140,140); ctx.restore();
-        ctx.save(); ctx.translate(372,256); ctx.rotate(0.15); ctx.drawImage(imgB, -70,-70,140,140); ctx.restore();
-        ctx.save(); ctx.translate(256,256); ctx.fillStyle = glow;
-        ctx.beginPath(); ctx.arc(0,0,35,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚡', 0, 2); ctx.restore();
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('Generando con IA...', 256, 400);
-      };
-      imgA.onload = onLoad; imgB.onload = onLoad;
+      // Salir del modo selección antes de navegar
+      fusionMode = false;
+      fusionSelection = [];
+      const toggleBtn = document.getElementById('btnFusionToggle');
+      toggleBtn.classList.remove('active');
+      toggleBtn.textContent = '🧬 Fusionar';
+      document.getElementById('fusionBar').classList.add('hidden');
+
+      goTo('fusion');
+      runFusion(itemA, itemB);
     }
 
-    function generateFusionPrompt(a, b, name, rarity){
-      const w1 = a.name.split(' ')[0];
-      const w2 = b.name.split(' ').pop();
-      const styles = { 'COMÚN':'cartoon style, cute', 'RARO':'cartoon style, vibrant colors', 'ÉPICO':'epic digital art, glowing effects', 'LEGENDARIO':'legendary digital art, golden aura, masterpiece' };
-      return `A funny creative fusion creature combining a ${w1} and a ${w2}, named "${name}", ${styles[rarity]}, sticker design, white background, centered, high quality, no text`;
-    }
-
-    function calculateFusionRarity(a, b){
-      const max = Math.max(a,b);
-      const rand = Math.random();
-      if(max === 3) return 3;
-      if(a === 2 && b === 2) return rand < 0.5 ? 3 : 2;
-      if((a === 2 && b === 1) || (a === 1 && b === 2)) return rand < 0.3 ? 3 : 2;
-      if(a === 1 && b === 1) return rand < 0.4 ? 2 : 1;
-      if((a === 1 && b === 0) || (a === 0 && b === 1)) return rand < 0.3 ? 2 : 1;
-      return rand < 0.5 ? 1 : 0;
-    }
-    function generateBrainrootName(a, b, rarityIdx){
-      const prefixes = { 0:['Mini','Pequeño','Básico'], 1:['Super','Mega','Ultra'], 2:['Hyper','Cyber','Neo'], 3:['Dios','Titan','Omega'] };
-      const p = prefixes[rarityIdx][Math.floor(Math.random()*prefixes[rarityIdx].length)];
-      const w1 = a.name.split(' ')[0];
-      const w2 = b.name.split(' ').pop();
-      return `${p} ${w1}${w2}`;
-    }
-
-    document.getElementById('btnFuse').addEventListener('click', () => {
-      if(!fusionData || !slotA || !slotB) return;
-      const img = document.getElementById('brainrootImg');
-      let stickerData;
-      if(img.complete && img.naturalWidth > 0 && img.style.display !== 'none'){
-        const c = document.createElement('canvas');
-        c.width = 512; c.height = 512;
-        c.getContext('2d').drawImage(img, 0, 0, 512, 512);
-        stickerData = c.toDataURL('image/png');
-      } else {
-        stickerData = document.getElementById('brainrootCanvas').toDataURL('image/png');
-      }
-
-      const item = {
-        id: Date.now(),
-        name: fusionData.name,
-        value: formatMoney(fusionData.value),
-        rawValue: fusionData.value,
-        category: 'brainroot',
-        rarity: fusionData.rarity,
-        detectedLabel: 'brainroot',
-        detectionConfidence: 1,
-        image: stickerData,
-        original: stickerData,
-        created: new Date().toISOString(),
-        type: 'brainroot',
-        parents: fusionData.parents,
-        aiPrompt: fusionData.prompt
-      };
-
-      const g = getGallery();
-      g.unshift(item);
-      localStorage.setItem(DB_KEY, JSON.stringify(g));
-
-      updateTotalValue();
-      showToast(`¡Brainroot ${fusionData.name} creado!`);
+    function cancelFusionResult() {
+      pendingFusion = null;
       goTo('gallery');
-    });
+    }
+
+    function runFusion(itemA, itemB) {
+      document.getElementById('fusionThumbA').src = itemA.image;
+      document.getElementById('fusionThumbB').src = itemB.image;
+      document.getElementById('fusionDetected').textContent = 'Combinando objetos...';
+      document.getElementById('fusionInputName').value = '';
+      document.getElementById('fusionInputValue').value = '';
+      document.getElementById('btnSaveFusion').disabled = true;
+
+      generateBrainrootSticker(itemA, itemB, () => {
+        const rarity = fuseRarity(itemA.rarity, itemB.rarity);
+        const value = fuseValue(itemA, itemB, rarity);
+        const name = generateBrainrootName(itemA, itemB);
+
+        document.getElementById('fusionInputName').value = name;
+        document.getElementById('fusionInputValue').value = formatMoney(value);
+        document.getElementById('fusionRarityBadge').textContent = rarity.name;
+        document.getElementById('fusionRarityBadge').style.background = getRarityColor(rarity.name);
+
+        const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel;
+        const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel;
+        document.getElementById('fusionDetected').textContent = `${esA} + ${esB}`;
+
+        pendingFusion.rarity = rarity;
+        pendingFusion.value = value;
+        document.getElementById('btnSaveFusion').disabled = false;
+      });
+    }
+
+    function generateBrainrootSticker(itemA, itemB, callback) {
+      const imgA = new Image();
+      const imgB = new Image();
+      let loaded = 0;
+
+      const onBoth = () => {
+        loaded++;
+        if (loaded < 2) return;
+
+        const size = 512;
+        const c = document.getElementById('fusionCanvas');
+        c.width = size; c.height = size;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, size, size);
+
+        const r = 60;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(size - r, 0);
+        ctx.quadraticCurveTo(size, 0, size, r);
+        ctx.lineTo(size, size - r);
+        ctx.quadraticCurveTo(size, size, size - r, size);
+        ctx.lineTo(r, size);
+        ctx.quadraticCurveTo(0, size, 0, size - r);
+        ctx.lineTo(0, r);
+        ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath();
+        ctx.save();
+        ctx.clip();
+
+        // Mitad izquierda: objeto A
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, size / 2, size);
+        ctx.clip();
+        ctx.drawImage(imgA, 0, 0, size, size);
+        ctx.restore();
+
+        // Mitad derecha: objeto B
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(size / 2, 0, size / 2, size);
+        ctx.clip();
+        ctx.drawImage(imgB, 0, 0, size, size);
+        ctx.restore();
+
+        // Costura brillante central
+        const seam = ctx.createLinearGradient(size / 2 - 20, 0, size / 2 + 20, 0);
+        seam.addColorStop(0, 'rgba(155,89,182,0)');
+        seam.addColorStop(0.5, 'rgba(155,89,182,0.9)');
+        seam.addColorStop(1, 'rgba(155,89,182,0)');
+        ctx.fillStyle = seam;
+        ctx.fillRect(size / 2 - 20, 0, 40, size);
+
+        ctx.restore();
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(155,89,182,0.6)';
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 16;
+        ctx.stroke();
+        ctx.restore();
+
+        const grad = ctx.createLinearGradient(0, 0, size, size);
+        grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        callback();
+      };
+
+      imgA.onload = onBoth;
+      imgB.onload = onBoth;
+      imgA.src = itemA.image;
+      imgB.src = itemB.image;
+    }
+
+    function fuseRarity(rarityA, rarityB) {
+      const idxA = RARITY_TABLE.findIndex(r => r.name === rarityA.name);
+      const idxB = RARITY_TABLE.findIndex(r => r.name === rarityB.name);
+      let idx = Math.round((idxA + idxB) / 2);
+
+      const upgradeChance = 20 + (idxA + idxB) * 8;
+      if (Math.random() * 100 < upgradeChance && idx < RARITY_TABLE.length - 1) idx++;
+
+      idx = Math.max(0, Math.min(idx, RARITY_TABLE.length - 1));
+      return RARITY_TABLE[idx];
+    }
+
+    function fuseValue(itemA, itemB, rarity) {
+      const combined = (itemA.rawValue || 0) + (itemB.rawValue || 0);
+      const idx = RARITY_TABLE.findIndex(r => r.name === rarity.name);
+      const multiplier = [0.9, 1.15, 1.5, 2.2][idx];
+      return Math.round(combined * multiplier * (0.9 + Math.random() * 0.3));
+    }
+
+    function generateBrainrootName(itemA, itemB) {
+      const word = BRAINROOT_WORDS[Math.floor(Math.random() * BRAINROOT_WORDS.length)];
+      const partA = (itemA.name || 'Objeto').split(' ')[0];
+      const partB = (itemB.name || 'Objeto').split(' ')[0];
+      return `${word} ${partA}-${partB}`;
+    }
 
     // ==================== NOTIFICATIONS ====================
-    async function requestBattle(){
-      if(!('Notification' in window)){ showToast('Notificaciones no soportadas'); return; }
+    async function requestBattle() {
+      if (!('Notification' in window)) {
+        showToast('Tu navegador no soporta notificaciones');
+        return;
+      }
       const perm = await Notification.requestPermission();
-      if(perm === 'granted'){
+      if (perm === 'granted') {
         showToast('¡Notificaciones activadas!');
         setTimeout(() => {
           new Notification('Combina2s', {
-            body: '¡Es tu turno de atacar!',
+            body: '¡Tu oponente hizo su movimiento! Es tu turno de atacar.',
             icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🥊</text></svg>'
           });
         }, 2000);
       } else {
-        showToast('Activa notificaciones para jugar por turnos');
+        showToast('Activa las notificaciones para jugar por turnos.');
       }
     }
 
     // ==================== UTILS ====================
-    function showToast(msg){
+    function showToast(msg) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
@@ -1226,9 +1374,9 @@
     updateTotalValue();
 
     let lastTouchEnd = 0;
-    document.addEventListener('touchend', e => {
+    document.addEventListener('touchend', (e) => {
       const now = Date.now();
-      if(now - lastTouchEnd <= 300) e.preventDefault();
+      if (now - lastTouchEnd <= 300) e.preventDefault();
       lastTouchEnd = now;
     }, false);
   </script>
