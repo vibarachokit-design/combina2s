@@ -542,6 +542,23 @@
         <div class="value" id="fusionDetected">Combinando...</div>
       </div>
 
+      <div class="ia-detected" id="hfSettingsBox" style="text-align:left;">
+        <div class="label">🤖 Caricatura con IA (Hugging Face)</div>
+
+        <div id="hfSettingsForm">
+          <div class="form-group" style="margin:10px 0;">
+            <input type="text" id="hfTokenInput" placeholder="Pega tu token gratuito (hf_...)">
+          </div>
+          <button class="btn btn-secondary" id="btnSaveHfToken" style="margin-top:0;">Guardar token</button>
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Consíguelo gratis en huggingface.co/settings/tokens. Sin token, se usa el modo cómico local (sin internet).</p>
+        </div>
+
+        <div id="hfSettingsSaved" class="hidden" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span style="font-size:0.8rem;color:var(--accent);">✓ Token guardado — se usará IA real</span>
+          <button class="btn btn-secondary" id="btnEditHfToken" style="width:auto;margin:0;padding:8px 14px;font-size:0.75rem;">Cambiar</button>
+        </div>
+      </div>
+
       <div class="form-group">
         <label>Nombre del Brainroot</label>
         <input type="text" id="fusionInputName" placeholder="Nombre" maxlength="40">
@@ -642,6 +659,13 @@
     let fusionSelection = [];
     let pendingFusion = null;
 
+    // IA de caricaturización (Hugging Face Inference Providers)
+    const HF_TOKEN_KEY = 'combina2s_hf_token';
+    const HF_MODEL_KEY = 'combina2s_hf_model';
+    const DEFAULT_HF_MODEL = 'timbrooks/instruct-pix2pix';
+    function getHfToken() { return (localStorage.getItem(HF_TOKEN_KEY) || '').trim(); }
+    function getHfModel() { return localStorage.getItem(HF_MODEL_KEY) || DEFAULT_HF_MODEL; }
+
     // Traducción COCO-SSD → Español
     const LABEL_ES = {
       person: 'Persona', bicycle: 'Bicicleta', car: 'Auto', motorcycle: 'Moto',
@@ -724,6 +748,7 @@
         isModelLoading = false;
         document.getElementById('modelStatus').classList.add('ready');
         document.getElementById('modelStatusText').textContent = 'IA lista para detectar';
+        btnShutter.disabled = false;
         showToast('Modelo de IA cargado. ¡Apunta la cámara a un objeto!');
         startDetectionLoop();
       } catch (err) {
@@ -1073,6 +1098,19 @@
       goTo('gallery');
     });
 
+    document.getElementById('btnSaveHfToken').addEventListener('click', () => {
+      const val = document.getElementById('hfTokenInput').value.trim();
+      if (!val) { showToast('Pega un token válido'); return; }
+      localStorage.setItem(HF_TOKEN_KEY, val);
+      showToast('Token guardado. Se usará IA real en la próxima fusión.');
+      refreshHfSettingsUI();
+    });
+
+    document.getElementById('btnEditHfToken').addEventListener('click', () => {
+      document.getElementById('hfTokenInput').value = getHfToken();
+      refreshHfSettingsUI(true);
+    });
+
     function getGallery() {
       try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; } catch { return []; }
     }
@@ -1205,113 +1243,332 @@
       goTo('gallery');
     }
 
-    function runFusion(itemA, itemB) {
+    function refreshHfSettingsUI(forceEdit) {
+      const hasToken = !!getHfToken() && !forceEdit;
+      const form = document.getElementById('hfSettingsForm');
+      const saved = document.getElementById('hfSettingsSaved');
+      if (!form || !saved) return;
+      form.classList.toggle('hidden', hasToken);
+      saved.classList.toggle('hidden', !hasToken);
+    }
+
+    async function runFusion(itemA, itemB) {
       document.getElementById('fusionThumbA').src = itemA.image;
       document.getElementById('fusionThumbB').src = itemB.image;
       document.getElementById('fusionDetected').textContent = 'Combinando objetos...';
       document.getElementById('fusionInputName').value = '';
       document.getElementById('fusionInputValue').value = '';
       document.getElementById('btnSaveFusion').disabled = true;
+      refreshHfSettingsUI();
 
-      generateBrainrootSticker(itemA, itemB, () => {
-        const rarity = fuseRarity(itemA.rarity, itemB.rarity);
-        const value = fuseValue(itemA, itemB, rarity);
-        const name = generateBrainrootName(itemA, itemB);
+      // 1) Versión cómica local: instantánea, funciona sin internet
+      await generateBrainrootSticker(itemA, itemB);
 
-        document.getElementById('fusionInputName').value = name;
-        document.getElementById('fusionInputValue').value = formatMoney(value);
-        document.getElementById('fusionRarityBadge').textContent = rarity.name;
-        document.getElementById('fusionRarityBadge').style.background = getRarityColor(rarity.name);
+      // 2) Si hay token de Hugging Face, intentar mejorar con IA real (caricatura)
+      if (getHfToken()) {
+        document.getElementById('fusionDetected').textContent = '🤖 Generando caricatura con IA...';
+        const aiBlob = await aiCartoonizeFusion(itemA, itemB);
+        if (aiBlob) {
+          await drawBlobToFusionCanvas(aiBlob);
+          showToast('¡Caricatura generada con IA! 🎨');
+        } else {
+          showToast('La IA no respondió — se usó el modo cómico local');
+        }
+      }
 
-        const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel;
-        const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel;
-        document.getElementById('fusionDetected').textContent = `${esA} + ${esB}`;
+      finishFusionStats(itemA, itemB);
+    }
 
-        pendingFusion.rarity = rarity;
-        pendingFusion.value = value;
-        document.getElementById('btnSaveFusion').disabled = false;
+    function finishFusionStats(itemA, itemB) {
+      const rarity = fuseRarity(itemA.rarity, itemB.rarity);
+      const value = fuseValue(itemA, itemB, rarity);
+      const name = generateBrainrootName(itemA, itemB);
+
+      document.getElementById('fusionInputName').value = name;
+      document.getElementById('fusionInputValue').value = formatMoney(value);
+      document.getElementById('fusionRarityBadge').textContent = rarity.name;
+      document.getElementById('fusionRarityBadge').style.background = getRarityColor(rarity.name);
+
+      const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel;
+      const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel;
+      document.getElementById('fusionDetected').textContent = `${esA} + ${esB}`;
+
+      pendingFusion.rarity = rarity;
+      pendingFusion.value = value;
+      document.getElementById('btnSaveFusion').disabled = false;
+    }
+
+    // Dibuja ojos, nariz, boca, brazos y piernas de cómic sobre el canvas (size x size)
+    function drawComicFace(ctx, size) {
+      const cx = size / 2;
+      const eyeY = size * 0.38;
+      const eyeDX = size * 0.16;
+      const eyeR = size * 0.09;
+
+      [-1, 1].forEach(dir => {
+        const ex = cx + dir * eyeDX;
+        ctx.beginPath();
+        ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = size * 0.012;
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(ex + dir * eyeR * 0.15, eyeY + eyeR * 0.1, eyeR * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(ex + dir * eyeR * 0.35, eyeY - eyeR * 0.2, eyeR * 0.15, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      });
+
+      // Nariz
+      ctx.beginPath();
+      ctx.ellipse(cx, size * 0.5, size * 0.035, size * 0.045, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fill();
+
+      // Boca (sonrisa)
+      ctx.beginPath();
+      ctx.arc(cx, size * 0.56, size * 0.11, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.lineWidth = size * 0.02;
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Brazos y manos
+      ctx.lineWidth = size * 0.03;
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineCap = 'round';
+      [-1, 1].forEach(dir => {
+        ctx.beginPath();
+        ctx.moveTo(cx + dir * size * 0.28, size * 0.7);
+        ctx.quadraticCurveTo(cx + dir * size * 0.46, size * 0.78, cx + dir * size * 0.42, size * 0.92);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx + dir * size * 0.42, size * 0.92, size * 0.035, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
+      });
+
+      // Piernas y pies
+      [-1, 1].forEach(dir => {
+        ctx.beginPath();
+        ctx.moveTo(cx + dir * size * 0.1, size * 0.94);
+        ctx.lineTo(cx + dir * size * 0.14, size * 0.99);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx + dir * size * 0.14, size * 0.99, size * 0.025, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
       });
     }
 
-    function generateBrainrootSticker(itemA, itemB, callback) {
-      const imgA = new Image();
-      const imgB = new Image();
-      let loaded = 0;
+    function generateBrainrootSticker(itemA, itemB) {
+      return new Promise((resolve) => {
+        const imgA = new Image();
+        const imgB = new Image();
+        let loaded = 0;
 
-      const onBoth = () => {
-        loaded++;
-        if (loaded < 2) return;
+        const onBoth = () => {
+          loaded++;
+          if (loaded < 2) return;
 
-        const size = 512;
-        const c = document.getElementById('fusionCanvas');
-        c.width = size; c.height = size;
-        const ctx = c.getContext('2d');
-        ctx.clearRect(0, 0, size, size);
+          const size = 512;
+          const c = document.getElementById('fusionCanvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.clearRect(0, 0, size, size);
 
-        const r = 60;
-        ctx.beginPath();
-        ctx.moveTo(r, 0);
-        ctx.lineTo(size - r, 0);
-        ctx.quadraticCurveTo(size, 0, size, r);
-        ctx.lineTo(size, size - r);
-        ctx.quadraticCurveTo(size, size, size - r, size);
-        ctx.lineTo(r, size);
-        ctx.quadraticCurveTo(0, size, 0, size - r);
-        ctx.lineTo(0, r);
-        ctx.quadraticCurveTo(0, 0, r, 0);
-        ctx.closePath();
-        ctx.save();
-        ctx.clip();
+          const r = 60;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.lineTo(size - r, 0);
+          ctx.quadraticCurveTo(size, 0, size, r);
+          ctx.lineTo(size, size - r);
+          ctx.quadraticCurveTo(size, size, size - r, size);
+          ctx.lineTo(r, size);
+          ctx.quadraticCurveTo(0, size, 0, size - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+          ctx.save();
+          ctx.clip();
 
-        // Mitad izquierda: objeto A
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, size / 2, size);
-        ctx.clip();
-        ctx.drawImage(imgA, 0, 0, size, size);
-        ctx.restore();
+          // Mitad izquierda: objeto A
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, size / 2, size);
+          ctx.clip();
+          ctx.drawImage(imgA, 0, 0, size, size);
+          ctx.restore();
 
-        // Mitad derecha: objeto B
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(size / 2, 0, size / 2, size);
-        ctx.clip();
-        ctx.drawImage(imgB, 0, 0, size, size);
-        ctx.restore();
+          // Mitad derecha: objeto B
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(size / 2, 0, size / 2, size);
+          ctx.clip();
+          ctx.drawImage(imgB, 0, 0, size, size);
+          ctx.restore();
 
-        // Costura brillante central
-        const seam = ctx.createLinearGradient(size / 2 - 20, 0, size / 2 + 20, 0);
-        seam.addColorStop(0, 'rgba(155,89,182,0)');
-        seam.addColorStop(0.5, 'rgba(155,89,182,0.9)');
-        seam.addColorStop(1, 'rgba(155,89,182,0)');
-        ctx.fillStyle = seam;
-        ctx.fillRect(size / 2 - 20, 0, 40, size);
+          // Costura brillante central
+          const seam = ctx.createLinearGradient(size / 2 - 20, 0, size / 2 + 20, 0);
+          seam.addColorStop(0, 'rgba(155,89,182,0)');
+          seam.addColorStop(0.5, 'rgba(155,89,182,0.9)');
+          seam.addColorStop(1, 'rgba(155,89,182,0)');
+          ctx.fillStyle = seam;
+          ctx.fillRect(size / 2 - 20, 0, 40, size);
 
-        ctx.restore();
+          // Cara y extremidades cómicas
+          drawComicFace(ctx, size);
 
-        ctx.save();
-        ctx.shadowColor = 'rgba(155,89,182,0.6)';
-        ctx.shadowBlur = 24;
-        ctx.shadowOffsetY = 8;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 16;
-        ctx.stroke();
-        ctx.restore();
+          ctx.restore();
 
-        const grad = ctx.createLinearGradient(0, 0, size, size);
-        grad.addColorStop(0, 'rgba(255,255,255,0.15)');
-        grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = grad;
-        ctx.fill();
+          ctx.save();
+          ctx.shadowColor = 'rgba(155,89,182,0.6)';
+          ctx.shadowBlur = 24;
+          ctx.shadowOffsetY = 8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 16;
+          ctx.stroke();
+          ctx.restore();
 
-        callback();
-      };
+          const grad = ctx.createLinearGradient(0, 0, size, size);
+          grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+          grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = grad;
+          ctx.fill();
 
-      imgA.onload = onBoth;
-      imgB.onload = onBoth;
-      imgA.src = itemA.image;
-      imgB.src = itemB.image;
+          resolve();
+        };
+
+        imgA.onload = onBoth;
+        imgB.onload = onBoth;
+        imgA.src = itemA.image;
+        imgB.src = itemB.image;
+      });
+    }
+
+    // Compone las 2 fotos originales lado a lado para enviarlas a la IA de edición de imágenes
+    function drawCover(ctx, img, dx, dy, dw, dh) {
+      const scale = Math.max(dw / img.width, dh / img.height);
+      const sw = dw / scale, sh = dh / scale;
+      const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+
+    function buildReferenceComposite(itemA, itemB) {
+      return new Promise((resolve) => {
+        const imgA = new Image();
+        const imgB = new Image();
+        let loaded = 0;
+        const onBoth = () => {
+          loaded++;
+          if (loaded < 2) return;
+          const w = 768, h = 384;
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          drawCover(ctx, imgA, 0, 0, w / 2, h);
+          drawCover(ctx, imgB, w / 2, 0, w / 2, h);
+          c.toBlob(blob => resolve(blob), 'image/jpeg', 0.9);
+        };
+        imgA.onload = onBoth;
+        imgB.onload = onBoth;
+        imgA.src = itemA.original || itemA.image;
+        imgB.src = itemB.original || itemB.image;
+      });
+    }
+
+    // Llama a Hugging Face Inference Providers (gratis con token personal) para
+    // convertir la fusión en una caricatura cómica real. Devuelve null si falla
+    // (sin token, sin internet, modelo no disponible, etc.) y el juego sigue
+    // funcionando con la versión cómica local generada por Canvas.
+    async function aiCartoonizeFusion(itemA, itemB) {
+      const token = getHfToken();
+      if (!token) return null;
+
+      try {
+        const refBlob = await buildReferenceComposite(itemA, itemB);
+        const { InferenceClient } = await import('https://esm.sh/@huggingface/inference');
+        const hf = new InferenceClient(token);
+
+        const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel || 'objeto';
+        const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel || 'objeto';
+
+        const prompt = `Turn this into a single funny comic mascot character that fuses a ${esA} and a ${esB}. Add a cartoon comic face with big expressive eyes, a nose, a smiling mouth, plus simple cartoon arms and legs with hands and feet. Flat bold colors, thick black outlines, comic sticker style, plain white background, centered, full body visible.`;
+
+        const resultBlob = await hf.imageToImage({
+          inputs: refBlob,
+          parameters: { prompt },
+          model: getHfModel()
+        });
+
+        return resultBlob;
+      } catch (err) {
+        console.error('Fusión con IA falló:', err);
+        return null;
+      }
+    }
+
+    function drawBlobToFusionCanvas(blob) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const size = 512;
+          const c = document.getElementById('fusionCanvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.clearRect(0, 0, size, size);
+
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+
+          const r = 60;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.lineTo(size - r, 0);
+          ctx.quadraticCurveTo(size, 0, size, r);
+          ctx.lineTo(size, size - r);
+          ctx.quadraticCurveTo(size, size, size - r, size);
+          ctx.lineTo(r, size);
+          ctx.quadraticCurveTo(0, size, 0, size - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+          ctx.restore();
+
+          ctx.save();
+          ctx.shadowColor = 'rgba(155,89,182,0.6)';
+          ctx.shadowBlur = 24;
+          ctx.shadowOffsetY = 8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 16;
+          ctx.stroke();
+          ctx.restore();
+
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        img.src = url;
+      });
     }
 
     function fuseRarity(rarityA, rarityB) {
