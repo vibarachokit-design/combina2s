@@ -586,8 +586,12 @@
         <div class="value" id="fusionDetected">Combinando...</div>
       </div>
 
+      <p style="font-size:0.7rem;color:var(--text-dim);text-align:left;margin:4px 0 0;">
+        ✨ Cada fusión intenta primero una caricatura con <strong>Pollinations.ai</strong> (gratis, sin token, automático). Si no responde, usa tu token de Hugging Face si tienes uno guardado abajo, o el modo cómico local.
+      </p>
+
       <div class="ia-detected" id="hfSettingsBox" style="text-align:left;">
-        <div class="label">🤖 Caricatura con IA (Hugging Face)</div>
+        <div class="label">🤖 Respaldo con Hugging Face (opcional)</div>
 
         <div id="hfSettingsForm">
           <div class="form-group" style="margin:10px 0;">
@@ -599,7 +603,7 @@
             <input type="text" id="hfModelInput" placeholder="Qwen/Qwen-Image-Edit">
           </div>
           <button class="btn btn-secondary" id="btnSaveHfToken" style="margin-top:0;">Guardar</button>
-          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Consíguelo gratis en huggingface.co/settings/tokens. Sin token, se usa el modo cómico local (sin internet). Si un modelo falla, prueba con otro compatible con "image-to-image" en Hugging Face.</p>
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Opcional — solo se usa si Pollinations falla. Consíguelo gratis en huggingface.co/settings/tokens (créditos limitados). Si un modelo falla, prueba con otro compatible con "image-to-image".</p>
         </div>
 
         <div id="hfSettingsSaved" class="hidden" style="display:flex;flex-direction:column;gap:6px;">
@@ -1443,20 +1447,34 @@
       document.getElementById('btnSaveFusion').disabled = true;
       refreshHfSettingsUI();
 
-      // 1) Versión cómica local: instantánea, funciona sin internet
+      // 1) Versión cómica local: instantánea, funciona sin internet, siempre disponible
       await generateBrainrootSticker(itemA, itemB);
 
-      // 2) Si hay token de Hugging Face, intentar mejorar con IA real (caricatura)
-      if (getHfToken()) {
-        document.getElementById('fusionDetected').textContent = '🤖 Generando caricatura con IA...';
-        const { blob: aiBlob, error: aiError } = await aiCartoonizeFusion(itemA, itemB);
-        if (aiBlob) {
-          await drawBlobToFusionCanvas(aiBlob);
-          showToast('¡Caricatura generada con IA! 🎨');
+      // 2) Intentar mejorar con IA real, gratis y sin token (Pollinations.ai, modelo kontext)
+      document.getElementById('fusionDetected').textContent = '🎨 Generando caricatura con IA gratuita...';
+      let { blob: aiBlob, error: aiError } = await aiCartoonizeFusionPollinations(itemA, itemB);
+      let usedSource = aiBlob ? 'pollinations' : null;
+
+      // 3) Si Pollinations falla y hay un token de Hugging Face guardado, reintentar con HF
+      if (!aiBlob && getHfToken()) {
+        document.getElementById('fusionDetected').textContent = '🤖 Reintentando con Hugging Face...';
+        const hfResult = await aiCartoonizeFusion(itemA, itemB);
+        if (hfResult.blob) {
+          aiBlob = hfResult.blob;
+          usedSource = 'huggingface';
         } else {
-          console.warn('Detalle del error de IA:', aiError);
-          showToast('IA falló: ' + (aiError || 'error desconocido') + ' — se usó el modo local', 6000);
+          aiError = hfResult.error;
         }
+      }
+
+      if (aiBlob) {
+        await drawBlobToFusionCanvas(aiBlob);
+        showToast(usedSource === 'pollinations'
+          ? '¡Caricatura generada con IA gratuita! 🎨'
+          : '¡Caricatura generada con Hugging Face! 🎨');
+      } else {
+        console.warn('Detalle del error de IA:', aiError);
+        showToast('La IA no respondió (' + (aiError || 'sin conexión') + ') — se usó el modo cómico local', 6000);
       }
 
       finishFusionStats(itemA, itemB);
@@ -1649,7 +1667,10 @@
       ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
     }
 
-    function buildReferenceComposite(itemA, itemB) {
+    function buildReferenceComposite(itemA, itemB, w, h, quality) {
+      w = w || 768;
+      h = h || 384;
+      quality = quality || 0.9;
       return new Promise((resolve) => {
         const imgA = new Image();
         const imgB = new Image();
@@ -1657,7 +1678,6 @@
         const onBoth = () => {
           loaded++;
           if (loaded < 2) return;
-          const w = 768, h = 384;
           const c = document.createElement('canvas');
           c.width = w; c.height = h;
           const ctx = c.getContext('2d');
@@ -1665,13 +1685,56 @@
           ctx.fillRect(0, 0, w, h);
           drawCover(ctx, imgA, 0, 0, w / 2, h);
           drawCover(ctx, imgB, w / 2, 0, w / 2, h);
-          c.toBlob(blob => resolve(blob), 'image/jpeg', 0.9);
+          c.toBlob(blob => resolve(blob), 'image/jpeg', quality);
         };
         imgA.onload = onBoth;
         imgB.onload = onBoth;
         imgA.src = itemA.original || itemA.image;
         imgB.src = itemB.original || itemB.image;
       });
+    }
+
+    function blobToDataURL(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // Intenta generar la caricatura con Pollinations.ai (modelo "kontext"), que es
+    // gratuito y no requiere token ni cuenta. Le mandamos la foto compuesta incrustada
+    // como data URI en el parámetro "image" (Pollinations normalmente espera una URL
+    // pública, así que esto no está garantizado al 100% — por eso el composite se
+    // mantiene chico, y si falla por cualquier motivo se sigue con Hugging Face o el
+    // modo cómico local sin interrumpir el juego).
+    async function aiCartoonizeFusionPollinations(itemA, itemB) {
+      try {
+        const refBlob = await buildReferenceComposite(itemA, itemB, 320, 160, 0.6);
+        const dataUrl = await blobToDataURL(refBlob);
+
+        const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel || 'objeto';
+        const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel || 'objeto';
+        const prompt = `Turn this into a single funny comic mascot character that fuses a ${esA} and a ${esB}. Cartoon comic face with big expressive eyes, a nose, a smiling mouth, plus simple cartoon arms and legs with hands and feet. Flat bold colors, thick black outlines, comic sticker style, plain white background, centered, full body visible.`;
+
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+          + `?model=kontext&image=${encodeURIComponent(dataUrl)}&width=512&height=512&nologo=true`;
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          throw new Error(`HTTP ${res.status}${detail ? ' — ' + detail.slice(0, 120) : ''}`);
+        }
+        const blob = await res.blob();
+        if (!blob || blob.size < 1000 || !blob.type.startsWith('image/')) {
+          throw new Error('Respuesta inválida del servidor');
+        }
+        return { blob, error: null };
+      } catch (err) {
+        console.warn('Pollinations (gratis, sin token) falló:', err);
+        return { blob: null, error: err && err.message ? err.message : String(err) };
+      }
     }
 
     // Llama a Hugging Face Inference Providers (gratis con token personal) para
