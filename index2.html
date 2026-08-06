@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0f23">
+  <title>Combina2s — IA Local</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f0f23;
+      --surface: #1a1a2e;
+      --surface-light: #252540;
+      --accent: #00d4aa;
+      --accent-dim: #00d4aa33;
+      --danger: #ff4757;
+      --gold: #ffd700;
+      --text: #e0e0e0;
+      --text-dim: #8888a0;
+      --radius: 16px;
+      --shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .screen { display: none; min-height: 100vh; padding: 20px; padding-bottom: 100px; animation: fadeIn 0.3s ease; }
+    .screen.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .app-header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
+      padding: 16px 20px;
+      z-index: 100;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .app-title {
+      font-size: 1.4rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--gold));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .coins-badge {
+      background: var(--surface-light);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid #333;
+      display: flex; justify-content: space-around;
+      padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+      z-index: 100;
+    }
+    .nav-btn {
+      background: none; border: none; color: var(--text-dim);
+      display: flex; flex-direction: column; align-items: center;
+      gap: 4px; font-size: 0.7rem; cursor: pointer; padding: 8px 16px;
+      transition: all 0.2s;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn svg { width: 24px; height: 24px; }
+
+    /* ===== CÁMARA ===== */
+    .camera-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/4;
+      background: #000;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-top: 60px;
+      box-shadow: var(--shadow);
+    }
+    #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #canvas-snap { display: none; }
+    .camera-overlay {
+      position: absolute; inset: 0;
+      border: 2px dashed var(--accent);
+      border-radius: var(--radius);
+      margin: 40px;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .camera-hint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 8px 16px; border-radius: 20px;
+      font-size: 0.85rem; color: var(--text-dim);
+    }
+    .shutter-btn {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 4px solid var(--bg);
+      box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow);
+      cursor: pointer;
+      z-index: 90;
+      transition: transform 0.1s;
+    }
+    .shutter-btn:active { transform: translateX(-50%) scale(0.92); }
+    .shutter-btn::after {
+      content: ''; position: absolute; inset: 8px;
+      border-radius: 50%; border: 2px solid var(--bg);
+    }
+    .shutter-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* ===== DETECCIÓN EN VIVO ===== */
+    .detection-box {
+      position: absolute;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .detection-label {
+      position: absolute;
+      top: -24px;
+      left: 0;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    /* ===== PREVIEW ===== */
+    .preview-container {
+      margin-top: 60px;
+      text-align: center;
+    }
+    .sticker-preview {
+      width: 280px; height: 280px;
+      margin: 20px auto;
+      position: relative;
+    }
+    .sticker-preview canvas {
+      width: 100%; height: 100%;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.5));
+    }
+    .sticker-badge {
+      position: absolute; top: -10px; right: -10px;
+      background: var(--danger);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 0.8rem; font-weight: 700;
+      transform: rotate(12deg);
+      box-shadow: var(--shadow);
+    }
+    .ia-detected {
+      background: var(--surface);
+      border: 1px solid var(--accent-dim);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      text-align: left;
+    }
+    .ia-detected .label {
+      font-size: 0.75rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .ia-detected .value {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .form-group {
+      margin: 16px 0;
+      text-align: left;
+    }
+    .form-group label {
+      display: block; margin-bottom: 6px;
+      font-size: 0.85rem; color: var(--text-dim); font-weight: 600;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--surface-light);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus { border-color: var(--accent); }
+
+    .btn {
+      width: 100%; padding: 16px;
+      border-radius: 12px; border: none;
+      font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+      margin-top: 8px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #00b894);
+      color: var(--bg);
+    }
+    .btn-primary:active { opacity: 0.9; transform: scale(0.98); }
+    .btn-primary:disabled {
+      background: #2a4a40;
+      color: #668;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--surface-light);
+      color: var(--text);
+    }
+    .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+    .btn-row .btn { flex: 1; margin-top: 0; }
+
+    /* ===== GALERÍA ===== */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 60px;
+    }
+    .gallery-item {
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 1;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s;
+    }
+    .gallery-item:active { transform: scale(0.96); }
+    .gallery-item img, .gallery-item canvas {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .gallery-info {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9));
+      padding: 12px;
+    }
+    .gallery-name { font-size: 0.85rem; font-weight: 700; }
+    .gallery-value {
+      font-size: 0.75rem; color: var(--gold); font-weight: 600;
+    }
+    .gallery-rarity {
+      position: absolute; top: 8px; right: 8px;
+      width: 12px; height: 12px; border-radius: 50%;
+    }
+    .rarity-common { background: #888; }
+    .rarity-rare { background: #3498db; }
+    .rarity-epic { background: #9b59b6; }
+    .rarity-legendary { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--text-dim);
+    }
+    .empty-state svg { width: 80px; height: 80px; margin-bottom: 16px; opacity: 0.3; }
+
+    /* ===== FUSION / BRAINROOT ===== */
+    .gallery-header {
+      margin-top: 60px; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .gallery-header h2 { font-size: 1.3rem; }
+    .btn-fusion-toggle {
+      background: linear-gradient(135deg, #9b59b6, #6c3fa3);
+      color: #fff; border: none; border-radius: 20px;
+      padding: 8px 16px; font-size: 0.8rem; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(155,89,182,0.35);
+    }
+    .btn-fusion-toggle:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+    .btn-fusion-toggle.active { background: var(--surface-light); color: var(--text); }
+
+    .gallery-item.selectable { cursor: pointer; }
+    .gallery-item.selectable::before {
+      content: ''; position: absolute; inset: 0;
+      border: 3px solid transparent; border-radius: var(--radius);
+      z-index: 5; transition: border-color 0.15s; pointer-events: none;
+    }
+    .gallery-item.selected::before { border-color: #9b59b6; }
+    .gallery-item.selected { transform: scale(0.96); }
+    .select-check {
+      position: absolute; top: 8px; left: 8px; z-index: 6;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,0.5); border: 2px solid #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 800; color: #fff;
+    }
+    .gallery-item.selected .select-check { background: #9b59b6; border-color: #9b59b6; }
+    .brainroot-tag {
+      position: absolute; top: 8px; left: 8px; z-index: 6;
+      background: linear-gradient(135deg, #9b59b6, #6c3fa3);
+      color: #fff; font-size: 0.6rem; font-weight: 800;
+      padding: 3px 8px; border-radius: 8px; letter-spacing: 0.5px;
+    }
+
+    .fusion-bar {
+      position: fixed; left: 20px; right: 20px; bottom: 76px;
+      background: var(--surface); border: 1px solid #9b59b6;
+      border-radius: var(--radius); padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      box-shadow: var(--shadow); z-index: 95;
+    }
+    .fusion-bar .fusion-count { font-size: 0.85rem; font-weight: 700; color: var(--text-dim); }
+    .fusion-bar .fusion-count b { color: #cc8fe0; }
+    .fusion-bar-actions { display: flex; gap: 8px; }
+    .fusion-bar button {
+      border: none; border-radius: 10px; padding: 10px 14px;
+      font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    }
+    .fusion-bar .btn-do-fuse { background: linear-gradient(135deg, #9b59b6, #6c3fa3); color: #fff; }
+    .fusion-bar .btn-do-fuse:disabled { background: #3a2f45; color: #776; cursor: not-allowed; }
+    .fusion-bar .btn-cancel-fuse { background: var(--surface-light); color: var(--text); }
+
+    .fusion-sources {
+      display: flex; align-items: center; justify-content: center;
+      gap: 16px; margin: 20px 0;
+    }
+    .fusion-source-thumb {
+      width: 84px; height: 84px; border-radius: 16px; overflow: hidden;
+      box-shadow: var(--shadow); border: 2px solid var(--surface-light);
+    }
+    .fusion-source-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .fusion-plus { font-size: 1.4rem; color: #9b59b6; font-weight: 800; }
+
+    /* ===== COMBATE ===== */
+    .battle-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin: 12px 0;
+      border: 1px solid var(--surface-light);
+    }
+    .battle-opponent {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px;
+    }
+    .battle-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--surface-light);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+    }
+    .battle-status {
+      font-size: 0.8rem; color: var(--accent);
+      margin-top: 4px;
+    }
+    .turn-indicator {
+      display: inline-block;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      margin-right: 6px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* ===== UTILS ===== */
+    .hidden { display: none !important; }
+    .loading {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 200;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--surface-light);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
+      background: var(--surface); color: var(--text);
+      padding: 12px 24px; border-radius: 12px;
+      border: 1px solid var(--accent);
+      z-index: 300; transition: transform 0.3s ease;
+      font-size: 0.9rem; font-weight: 600;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    .model-status {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      z-index: 95;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .model-status .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.5s infinite;
+    }
+    .model-status.ready .dot {
+      background: #2ecc71;
+      animation: none;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--surface-light); border-radius: 3px; }
+
+    /* ===== MODAL DE DETALLE / COMPARTIR ===== */
+    .item-modal {
+      position: fixed; inset: 0; z-index: 400;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .item-modal-backdrop {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.75);
+    }
+    .item-modal-card {
+      position: relative; z-index: 1;
+      background: var(--surface); border-radius: var(--radius);
+      padding: 24px; max-width: 340px; width: 100%;
+      text-align: center; box-shadow: var(--shadow);
+      max-height: 90vh; overflow-y: auto;
+    }
+    .item-modal-card img {
+      width: 100%; aspect-ratio: 1; object-fit: contain;
+      border-radius: 12px;
+    }
+    .item-modal-close {
+      position: absolute; top: 12px; right: 12px;
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--surface-light); border: none; color: var(--text);
+      font-size: 1rem; cursor: pointer; z-index: 2;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="app-title">Combina2s</div>
+    <div class="coins-badge" id="totalValue">$0</div>
+  </header>
+
+  <div class="model-status" id="modelStatus">
+    <div class="dot"></div>
+    <span id="modelStatusText">Cargando modelo de IA...</span>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="loading hidden" id="loading">
+    <div class="spinner"></div>
+    <p style="margin-top:16px;color:var(--text-dim);font-size:0.9rem;" id="loadingText">Analizando objeto con IA...</p>
+  </div>
+
+  <!-- ===== MODAL DE DETALLE / COMPARTIR ===== -->
+  <div class="item-modal hidden" id="itemModal">
+    <div class="item-modal-backdrop" onclick="closeItemModal()"></div>
+    <div class="item-modal-card">
+      <button class="item-modal-close" onclick="closeItemModal()" aria-label="Cerrar">✕</button>
+      <img id="modalImg" src="" alt="">
+      <div class="sticker-badge" id="modalRarityBadge" style="position:static;display:inline-block;transform:none;margin:12px 0 4px;"></div>
+      <h3 id="modalName" style="font-size:1.1rem;"></h3>
+      <div style="color:var(--gold);font-weight:700;margin-top:2px;" id="modalValue"></div>
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn btn-secondary" id="modalDownloadBtn">⬇️ Descargar</button>
+        <button class="btn btn-primary" id="modalShareBtn">📤 Compartir</button>
+      </div>
+      <button class="btn btn-secondary" id="modalDeleteBtn" style="margin-top:10px;color:var(--danger);">🗑️ Eliminar de la galería</button>
+    </div>
+  </div>
+
+  <!-- ===== CÁMARA ===== -->
+  <div class="screen active" id="screen-camera">
+    <div class="camera-container" id="cameraContainer">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="camera-overlay"></div>
+      <div class="camera-hint" id="cameraHint">Centra el objeto en el marco</div>
+    </div>
+    <button class="shutter-btn" id="btnShutter" aria-label="Capturar"></button>
+    <canvas id="canvas-snap"></canvas>
+  </div>
+
+  <!-- ===== PREVIEW ===== -->
+  <div class="screen" id="screen-preview">
+    <div class="preview-container">
+      <div class="sticker-preview" id="stickerPreview">
+        <canvas id="stickerCanvas"></canvas>
+        <div class="sticker-badge" id="rarityBadge">COMÚN</div>
+      </div>
+
+      <div class="ia-detected">
+        <div class="label">🔍 Objeto detectado por IA</div>
+        <div class="value" id="detectedObject">Analizando...</div>
+      </div>
+
+      <div class="form-group">
+        <label>Nombre del objeto</label>
+        <input type="text" id="inputName" placeholder="Ej: Semáforo Callejero" maxlength="30">
+      </div>
+
+      <div class="form-group">
+        <label>Valor estimado</label>
+        <input type="text" id="inputValue" placeholder="$12.500" readonly style="color:var(--gold);font-weight:700;">
+      </div>
+
+      <div class="form-group">
+        <label>Categoría</label>
+        <select id="inputCategory">
+          <option value="calle">Calle / Ciudad</option>
+          <option value="casa">Casa / Hogar</option>
+          <option value="trabajo">Trabajo / Oficina</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goTo('camera')">↺ Reintentar</button>
+        <button class="btn btn-primary" id="btnSave">💾 Guardar en Galería</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GALERÍA ===== -->
+  <div class="screen" id="screen-gallery">
+    <div class="gallery-header">
+      <h2>Tu Colección</h2>
+      <button class="btn-fusion-toggle" id="btnFusionToggle" onclick="toggleFusionMode()">🧬 Fusionar</button>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <div class="empty-state hidden" id="emptyState">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 16"/>
+      </svg>
+      <p>Aún no tienes objetos capturados</p>
+      <p style="font-size:0.85rem;margin-top:8px;">Ve a la cámara y fotografía algo de tu entorno</p>
+    </div>
+
+    <div class="fusion-bar hidden" id="fusionBar">
+      <div class="fusion-count"><b id="fusionCount">0</b>/2 seleccionados</div>
+      <div class="fusion-bar-actions">
+        <button class="btn-cancel-fuse" onclick="toggleFusionMode()">Cancelar</button>
+        <button class="btn-do-fuse" id="btnDoFuse" disabled onclick="confirmFusionSelection()">Fusionar ✨</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FUSIÓN / BRAINROOT ===== -->
+  <div class="screen" id="screen-fusion">
+    <div class="preview-container">
+      <div class="fusion-sources">
+        <div class="fusion-source-thumb"><img id="fusionThumbA" src="" alt=""></div>
+        <div class="fusion-plus">+</div>
+        <div class="fusion-source-thumb"><img id="fusionThumbB" src="" alt=""></div>
+      </div>
+
+      <div class="sticker-preview" id="fusionStickerPreview">
+        <canvas id="fusionCanvas"></canvas>
+        <div class="sticker-badge" id="fusionRarityBadge">COMÚN</div>
+      </div>
+
+      <div class="ia-detected">
+        <div class="label">🧬 Brainroot generado</div>
+        <div class="value" id="fusionDetected">Combinando...</div>
+      </div>
+
+      <div class="ia-detected" id="hfSettingsBox" style="text-align:left;">
+        <div class="label">🤖 Caricatura con IA (Hugging Face)</div>
+
+        <div id="hfSettingsForm">
+          <div class="form-group" style="margin:10px 0;">
+            <label style="font-size:0.7rem;">Token de acceso</label>
+            <input type="text" id="hfTokenInput" placeholder="Pega tu token gratuito (hf_...)">
+          </div>
+          <div class="form-group" style="margin:10px 0;">
+            <label style="font-size:0.7rem;">Modelo (opcional, avanzado)</label>
+            <input type="text" id="hfModelInput" placeholder="Qwen/Qwen-Image-Edit">
+          </div>
+          <button class="btn btn-secondary" id="btnSaveHfToken" style="margin-top:0;">Guardar</button>
+          <p style="font-size:0.7rem;color:var(--text-dim);margin-top:8px;">Consíguelo gratis en huggingface.co/settings/tokens. Sin token, se usa el modo cómico local (sin internet). Si un modelo falla, prueba con otro compatible con "image-to-image" en Hugging Face.</p>
+        </div>
+
+        <div id="hfSettingsSaved" class="hidden" style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span style="font-size:0.8rem;color:var(--accent);">✓ Token guardado — se usará IA real</span>
+            <button class="btn btn-secondary" id="btnEditHfToken" style="width:auto;margin:0;padding:8px 14px;font-size:0.75rem;">Cambiar</button>
+          </div>
+          <span style="font-size:0.7rem;color:var(--text-dim);" id="hfModelLabel"></span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Nombre del Brainroot</label>
+        <input type="text" id="fusionInputName" placeholder="Nombre" maxlength="40">
+      </div>
+
+      <div class="form-group">
+        <label>Valor estimado</label>
+        <input type="text" id="fusionInputValue" readonly style="color:var(--gold);font-weight:700;">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="cancelFusionResult()">✕ Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveFusion" disabled>💾 Crear Brainroot</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnDownloadFusion" disabled>⬇️ Descargar</button>
+        <button class="btn btn-secondary" id="btnShareFusion" disabled>📤 Compartir</button>
+      </div>
+      <p style="font-size:0.75rem;color:var(--text-dim);margin-top:10px;">✅ Los 2 objetos originales se conservan en tu galería junto al nuevo Brainroot.</p>
+    </div>
+  </div>
+
+  <!-- ===== COMBATE ===== -->
+  <div class="screen" id="screen-battle">
+    <h2 style="margin-top:60px;margin-bottom:16px;font-size:1.3rem;">Combates</h2>
+    <p style="color:var(--text-dim);font-size:0.9rem;margin-bottom:20px;">
+      Turnos por notificación. Recibirás una alerta cuando sea tu turno.
+    </p>
+
+    <div class="battle-card">
+      <div class="battle-opponent">
+        <div class="battle-avatar">🥊</div>
+        <div>
+          <div style="font-weight:700;">Duelo Rápido</div>
+          <div class="battle-status"><span class="turn-indicator"></span>Esperando oponente...</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="requestBattle()">Buscar combate</button>
+    </div>
+
+    <div class="battle-card" style="opacity:0.6;">
+      <div class="battle-opponent">
+        <div class="battle-avatar">🏆</div>
+        <div>
+          <div style="font-weight:700;">Torneo Semanal</div>
+          <div class="battle-status">Próximo: Lunes 10:00</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary" disabled>Inscribirse</button>
+    </div>
+
+    <div style="margin-top:24px;padding:16px;background:var(--surface);border-radius:var(--radius);border:1px dashed var(--surface-light);">
+      <p style="font-size:0.85rem;color:var(--text-dim);">
+        🧬 <strong>Nuevo:</strong> ya puedes combinar 2 objetos de tu galería para crear un <em>Brainroot</em>. Próximamente podrás usarlo para luchar contra otros jugadores.
+      </p>
+      <button class="btn btn-secondary" style="margin-top:12px;" onclick="goTo('gallery')">Ir a la Galería</button>
+    </div>
+  </div>
+
+  <!-- ===== NAV ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-screen="camera" onclick="goTo('camera')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+      <span>Capturar</span>
+    </button>
+    <button class="nav-btn" data-screen="gallery" onclick="goTo('gallery')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      <span>Galería</span>
+    </button>
+    <button class="nav-btn" data-screen="battle" onclick="goTo('battle')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <path d="M12 18v-6"/>
+        <path d="M9 15l3-3 3 3"/>
+      </svg>
+      <span>Combate</span>
+    </button>
+  </nav>
+
+  <script>
+    // ==================== STATE ====================
+    const DB_KEY = 'combina2s_gallery_v2';
+    const STICKER_SIZE = 400; // tamaño del sticker guardado (antes 512) para ahorrar espacio en localStorage
+    let stream = null;
+    let capturedBlob = null;
+    let currentRarity = 'common';
+    let model = null;
+    let isModelLoading = true;
+    let detectedLabel = '';
+    let detectionConfidence = 0;
+
+    // Fusión / Brainroot
+    let fusionMode = false;
+    let fusionSelection = [];
+    let pendingFusion = null;
+
+    // IA de caricaturización (Hugging Face Inference Providers)
+    const HF_TOKEN_KEY = 'combina2s_hf_token';
+    const HF_MODEL_KEY = 'combina2s_hf_model';
+    const DEFAULT_HF_MODEL = 'Qwen/Qwen-Image-Edit';
+    function getHfToken() { return (localStorage.getItem(HF_TOKEN_KEY) || '').trim(); }
+    function getHfModel() { return localStorage.getItem(HF_MODEL_KEY) || DEFAULT_HF_MODEL; }
+
+    // Traducción COCO-SSD → Español
+    const LABEL_ES = {
+      person: 'Persona', bicycle: 'Bicicleta', car: 'Auto', motorcycle: 'Moto',
+      airplane: 'Avión', bus: 'Bus', train: 'Tren', truck: 'Camión', boat: 'Bote',
+      'traffic light': 'Semáforo', 'fire hydrant': 'Grifo de Incendios', 'stop sign': 'Señal de Pare',
+      'parking meter': 'Parquímetro', bench: 'Banca', bird: 'Pájaro', cat: 'Gato', dog: 'Perro',
+      horse: 'Caballo', sheep: 'Oveja', cow: 'Vaca', elephant: 'Elefante', bear: 'Oso',
+      zebra: 'Cebra', giraffe: 'Jirafa', backpack: 'Mochila', umbrella: 'Paraguas',
+      handbag: 'Cartera', tie: 'Corbata', suitcase: 'Maleta', frisbee: 'Frisbee',
+      skis: 'Esquíes', snowboard: 'Snowboard', 'sports ball': 'Pelota', kite: 'Cometa',
+      'baseball bat': 'Bate', 'baseball glove': 'Guante', skateboard: 'Skate',
+      surfboard: 'Tabla de Surf', 'tennis racket': 'Raqueta', bottle: 'Botella',
+      'wine glass': 'Copa', cup: 'Taza', fork: 'Tenedor', knife: 'Cuchillo', spoon: 'Cuchara',
+      bowl: 'Bowl', banana: 'Plátano', apple: 'Manzana', sandwich: 'Sándwich', orange: 'Naranja',
+      broccoli: 'Brócoli', carrot: 'Zanahoria', 'hot dog': 'Hot Dog', pizza: 'Pizza', donut: 'Donut',
+      cake: 'Torta', chair: 'Silla', couch: 'Sofá', 'potted plant': 'Planta', bed: 'Cama',
+      'dining table': 'Mesa', toilet: 'Baño', tv: 'Televisor', laptop: 'Laptop', mouse: 'Mouse',
+      remote: 'Control Remoto', keyboard: 'Teclado', 'cell phone': 'Celular', microwave: 'Microondas',
+      oven: 'Horno', toaster: 'Tostadora', sink: 'Lavaplatos', refrigerator: 'Refrigerador',
+      book: 'Libro', clock: 'Reloj', vase: 'Florero', scissors: 'Tijeras', 'teddy bear': 'Oso de Peluche',
+      'hair drier': 'Secador de Pelo', toothbrush: 'Cepillo de Dientes'
+    };
+
+    // Nombres creativos por categoría de objeto
+    const CREATIVE_NAMES = {
+      'traffic light': ['Semáforo Veloz', 'Luz de Cruce', 'Guardián del Tránsito', 'Semáforo Eléctrico'],
+      'fire hydrant': ['Grifo de Fuego', 'Hidrante Urbano', 'Guardián del Agua', 'Grifo Rojo'],
+      bottle: ['Botella Mística', 'Frasco Encantado', 'Botella de Cristal', 'Envase Legendario'],
+      cup: ['Taza Real', 'Copa Mágica', 'Vaso Encantado', 'Taza Dorada'],
+      chair: ['Silla de Trono', 'Asiento Real', 'Silla Coqueta', 'Trono de Madera'],
+      tv: ['Televisor Retro', 'Pantalla Mágica', 'Caja de Luz', 'Monitor Ancestral'],
+      laptop: ['Portátil Veloz', 'Computadora Mágica', 'Laptop de Batalla', 'Máquina de Código'],
+      mouse: ['Ratón Veloz', 'Mouse de Precisión', 'Roedor Digital', 'Apuntador Mágico'],
+      keyboard: ['Teclado Ruidoso', 'Teclas de Poder', 'Teclado Mecánico', 'Piano Digital'],
+      'cell phone': ['Celular Inteligente', 'Dispositivo Móvil', 'Teléfono Mágico', 'Comunicador'],
+      book: ['Libro de Hechizos', 'Tomo Místico', 'Libro de Sabiduría', 'Grimorio'],
+      clock: ['Reloj del Tiempo', 'Cronómetro Mágico', 'Marcador de Horas', 'Reloj Ancestral'],
+      car: ['Auto Veloz', 'Máquina de Calle', 'Vehículo Urbano', 'Carroza Metálica'],
+      bus: ['Bus Colectivo', 'Guagua Mágica', 'Transporte Real', 'Bus de Batalla'],
+      bench: ['Banca Callejera', 'Asiento Urbano', 'Banca de Descanso', 'Trono de Parque'],
+      umbrella: ['Paraguas Mágico', 'Sombrilla Protectora', 'Escudo de Lluvia', 'Paraguas Volador'],
+      backpack: ['Mochila de Aventura', 'Morral Místico', 'Mochila de Batalla', 'Bolso Viajero'],
+      'potted plant': ['Planta Mística', 'Maceta Encantada', 'Vegetal Urbano', 'Planta Guardiana'],
+      refrigerator: ['Nevera Real', 'Congelador Mágico', 'Heladera de Hielo', 'Caja Fría'],
+      microwave: ['Microondas Veloz', 'Horno Rápido', 'Calentador Mágico', 'Micro de Batalla'],
+      sink: ['Lavaplatos Real', 'Pileta Mágica', 'Fregadero Urbano', 'Pila de Agua'],
+      toilet: ['Trono Real', 'Sanitario Místico', 'Baño de Poder', 'Retrete Legendario'],
+      bed: ['Cama de Ensueño', 'Lecho Místico', 'Cama Real', 'Descanso Eterno'],
+      couch: ['Sofá Real', 'Diván Místico', 'Sillón de Poder', 'Asiento de Descanso'],
+      'dining table': ['Mesa Real', 'Tabla de Festines', 'Mesa de Batalla', 'Mesa Mística'],
+      // Default para cualquier otro objeto
+      default: ['Objeto Misterioso', 'Artefacto Curioso', 'Reliquia Urbana', 'Hallazgo Inesperado', 'Cosa Extraña', 'Objeto Encantado']
+    };
+
+    const BASE_VALUES = {
+      calle: [8000, 15000, 22000, 35000, 50000],
+      casa: [5000, 12000, 18000, 25000, 40000],
+      trabajo: [10000, 20000, 30000, 45000, 60000],
+      otro: [3000, 8000, 15000, 25000, 40000]
+    };
+
+    const RARITY_TABLE = [
+      { name: 'COMÚN', class: 'rarity-common', weight: 60 },
+      { name: 'RARO', class: 'rarity-rare', weight: 25 },
+      { name: 'ÉPICO', class: 'rarity-epic', weight: 12 },
+      { name: 'LEGENDARIO', class: 'rarity-legendary', weight: 3 }
+    ];
+
+    // Nombres tipo "brainrot" para las fusiones
+    const BRAINROOT_WORDS = [
+      'Tralalero', 'Bombardino', 'Tungtung', 'Capuchino', 'Ballerina', 'Lirili',
+      'Trippi', 'Bombombini', 'Sahur', 'Girafferro', 'Chimpanzini', 'Crocodillo',
+      'Frigo', 'Pandaccini', 'Espresso', 'Brr Brr'
+    ];
+
+    // ==================== INIT MODEL ====================
+    async function loadModel() {
+      try {
+        model = await cocoSsd.load();
+        isModelLoading = false;
+        document.getElementById('modelStatus').classList.add('ready');
+        document.getElementById('modelStatusText').textContent = 'IA lista para detectar';
+        btnShutter.disabled = false;
+        showToast('Modelo de IA cargado. ¡Apunta la cámara a un objeto!');
+        startDetectionLoop();
+      } catch (err) {
+        console.error(err);
+        document.getElementById('modelStatusText').textContent = 'Error cargando IA';
+        showToast('Error cargando modelo. Recarga la página.');
+      }
+    }
+
+    // Detección en tiempo real
+    let detectionFrame = null;
+    async function startDetectionLoop() {
+      if (!model || !stream) return;
+      const video = document.getElementById('video');
+      if (video.readyState < 2) {
+        detectionFrame = requestAnimationFrame(startDetectionLoop);
+        return;
+      }
+
+      // Detectar cada 500ms para no saturar
+      if (!window.lastDetect || Date.now() - window.lastDetect > 500) {
+        window.lastDetect = Date.now();
+        try {
+          const predictions = await model.detect(video);
+          drawDetections(predictions);
+        } catch (e) { console.error(e); }
+      }
+      detectionFrame = requestAnimationFrame(startDetectionLoop);
+    }
+
+    function drawDetections(predictions) {
+      // Limpiar detecciones anteriores
+      document.querySelectorAll('.detection-box').forEach(el => el.remove());
+
+      if (predictions.length === 0) {
+        document.getElementById('cameraHint').textContent = 'Centra el objeto en el marco';
+        return;
+      }
+
+      const container = document.getElementById('cameraContainer');
+      const rect = container.getBoundingClientRect();
+      const video = document.getElementById('video');
+      const scaleX = rect.width / video.videoWidth;
+      const scaleY = rect.height / video.videoHeight;
+
+      // Tomar la detección con mayor confianza
+      const best = predictions.sort((a, b) => b.score - a.score)[0];
+      if (best.score < 0.4) {
+        document.getElementById('cameraHint').textContent = 'Acércate más al objeto...';
+        return;
+      }
+
+      const [x, y, w, h] = best.bbox;
+      const box = document.createElement('div');
+      box.className = 'detection-box';
+      box.style.left = (x * scaleX) + 'px';
+      box.style.top = (y * scaleY) + 'px';
+      box.style.width = (w * scaleX) + 'px';
+      box.style.height = (h * scaleY) + 'px';
+
+      const label = document.createElement('div');
+      label.className = 'detection-label';
+      const esName = LABEL_ES[best.class] || best.class;
+      label.textContent = `${esName} (${Math.round(best.score * 100)}%)`;
+      box.appendChild(label);
+      container.appendChild(box);
+
+      document.getElementById('cameraHint').textContent = `¡${esName} detectado! Toca el botón para capturar`;
+    }
+
+    // ==================== NAVIGATION ====================
+    function goTo(screenName) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(`screen-${screenName}`).classList.add('active');
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.screen === screenName));
+
+      if (screenName === 'camera') {
+        startCamera();
+        if (model && !isModelLoading) startDetectionLoop();
+      }
+      if (screenName === 'gallery') renderGallery();
+      if (screenName !== 'camera') {
+        stopCamera();
+        if (detectionFrame) cancelAnimationFrame(detectionFrame);
+      }
+    }
+
+    // ==================== CAMERA ====================
+    const video = document.getElementById('video');
+    const canvasSnap = document.getElementById('canvas-snap');
+    const btnShutter = document.getElementById('btnShutter');
+
+    async function startCamera() {
+      try {
+        if (stream) return;
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = stream;
+        btnShutter.disabled = isModelLoading;
+      } catch (err) {
+        showToast('No se pudo acceder a la cámara. Verifica los permisos.');
+        console.error(err);
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        video.srcObject = null;
+      }
+    }
+
+    btnShutter.addEventListener('click', async () => {
+      if (!stream || isModelLoading) return;
+
+      // Capturar frame (limitado a 720px en el lado mayor para no llenar el almacenamiento local)
+      const rawW = video.videoWidth || 640;
+      const rawH = video.videoHeight || 480;
+      const maxSide = 720;
+      const scale = Math.min(1, maxSide / Math.max(rawW, rawH));
+      const w = Math.round(rawW * scale);
+      const h = Math.round(rawH * scale);
+      canvasSnap.width = w;
+      canvasSnap.height = h;
+      const ctx = canvasSnap.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      capturedBlob = canvasSnap.toDataURL('image/jpeg', 0.75);
+
+      // Detener cámara y detección
+      stopCamera();
+      if (detectionFrame) cancelAnimationFrame(detectionFrame);
+      document.querySelectorAll('.detection-box').forEach(el => el.remove());
+
+      // Analizar con IA
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('loadingText').textContent = 'Analizando objeto con IA...';
+
+      // Pequeña pausa para que el UI responda
+      await new Promise(r => setTimeout(r, 100));
+
+      const predictions = await model.detect(canvasSnap);
+      const best = predictions.sort((a, b) => b.score - a.score)[0];
+
+      if (best && best.score > 0.3) {
+        detectedLabel = best.class;
+        detectionConfidence = best.score;
+      } else {
+        detectedLabel = 'unknown';
+        detectionConfidence = 0;
+      }
+
+      generateSticker();
+    });
+
+    // ==================== STICKER GENERATOR ====================
+    function generateSticker() {
+      const img = new Image();
+      img.onload = () => {
+        const size = STICKER_SIZE;
+        const c = document.getElementById('stickerCanvas');
+        c.width = size; c.height = size;
+        const ctx = c.getContext('2d');
+
+        ctx.clearRect(0, 0, size, size);
+
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+
+        const r = 60;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(size - r, 0);
+        ctx.quadraticCurveTo(size, 0, size, r);
+        ctx.lineTo(size, size - r);
+        ctx.quadraticCurveTo(size, size, size - r, size);
+        ctx.lineTo(r, size);
+        ctx.quadraticCurveTo(0, size, 0, size - r);
+        ctx.lineTo(0, r);
+        ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath();
+        ctx.save();
+        ctx.clip();
+
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+        ctx.restore();
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 16;
+        ctx.stroke();
+        ctx.restore();
+
+        const grad = ctx.createLinearGradient(0, 0, size, size);
+        grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Generar rarity y valor
+        currentRarity = rollRarity();
+        const category = inferCategory(detectedLabel);
+        document.getElementById('inputCategory').value = category;
+        const value = rollValue(category, currentRarity);
+        document.getElementById('inputValue').value = formatMoney(value);
+
+        // Nombre creativo basado en detección
+        const creativeName = generateCreativeName(detectedLabel, category);
+        document.getElementById('inputName').value = creativeName;
+
+        // Mostrar detección
+        const esLabel = LABEL_ES[detectedLabel] || detectedLabel;
+        document.getElementById('detectedObject').textContent =
+          detectedLabel === 'unknown'
+            ? 'No se detectó con certeza — edita el nombre'
+            : `${esLabel} (${Math.round(detectionConfidence * 100)}% confianza)`;
+
+        document.getElementById('rarityBadge').textContent = currentRarity.name;
+        document.getElementById('rarityBadge').style.background = getRarityColor(currentRarity.name);
+
+        document.getElementById('loading').classList.add('hidden');
+        goTo('preview');
+      };
+      img.src = capturedBlob;
+    }
+
+    function inferCategory(label) {
+      const street = ['traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'car', 'bus', 'truck', 'motorcycle', 'bicycle'];
+      const home = ['bed', 'couch', 'chair', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'clock', 'vase', 'book', 'potted plant'];
+      const work = ['laptop', 'mouse', 'keyboard', 'cell phone', 'book', 'clock', 'backpack', 'tie', 'suitcase'];
+
+      if (street.includes(label)) return 'calle';
+      if (home.includes(label)) return 'casa';
+      if (work.includes(label)) return 'trabajo';
+      return 'otro';
+    }
+
+    function generateCreativeName(label, category) {
+      const names = CREATIVE_NAMES[label] || CREATIVE_NAMES.default;
+      const base = names[Math.floor(Math.random() * names.length)];
+
+      // Añadir sufijo según rareza
+      const suffixes = {
+        'COMÚN': ['', 'Común', 'Básico'],
+        'RARO': ['Raro', 'Especial', 'Plus'],
+        'ÉPICO': ['Épico', 'Supremo', 'Elite'],
+        'LEGENDARIO': ['Legendario', 'Mítico', 'Divino']
+      };
+      const suffix = suffixes[currentRarity.name][Math.floor(Math.random() * suffixes[currentRarity.name].length)];
+      return suffix ? `${base} ${suffix}` : base;
+    }
+
+    function rollRarity() {
+      const rand = Math.random() * 100;
+      let acc = 0;
+      for (const r of RARITY_TABLE) {
+        acc += r.weight;
+        if (rand <= acc) return r;
+      }
+      return RARITY_TABLE[0];
+    }
+
+    function rollValue(category, rarity) {
+      const base = BASE_VALUES[category] || BASE_VALUES.otro;
+      const idx = RARITY_TABLE.findIndex(r => r.name === rarity.name);
+      const val = base[Math.min(idx, base.length - 1)];
+      return Math.round(val * (0.85 + Math.random() * 0.3));
+    }
+
+    function formatMoney(n) {
+      return '$' + n.toLocaleString('es-CL');
+    }
+
+    function getRarityColor(name) {
+      const map = { 'COMÚN': '#888', 'RARO': '#3498db', 'ÉPICO': '#9b59b6', 'LEGENDARIO': '#ffd700' };
+      return map[name] || '#888';
+    }
+
+    // ==================== SAVE ====================
+    // Guarda la galería en localStorage de forma segura. Si el almacenamiento
+    // está lleno (QuotaExceededError), avisa con un mensaje claro en vez de
+    // fallar en silencio (que es lo que hacía que "Guardar" no hiciera nada).
+    function saveGallery(gallery) {
+      try {
+        localStorage.setItem(DB_KEY, JSON.stringify(gallery));
+        return true;
+      } catch (err) {
+        console.error('No se pudo guardar en localStorage:', err);
+        showToast('Espacio de almacenamiento lleno. Elimina algún objeto de la galería (toca el ítem → Eliminar) e inténtalo de nuevo.', 6000);
+        return false;
+      }
+    }
+
+    document.getElementById('btnSave').addEventListener('click', () => {
+      const name = document.getElementById('inputName').value.trim() || 'Objeto sin nombre';
+      const valueStr = document.getElementById('inputValue').value;
+      const category = document.getElementById('inputCategory').value;
+      const stickerCanvas = document.getElementById('stickerCanvas');
+      const stickerData = stickerCanvas.toDataURL('image/png');
+
+      const item = {
+        id: Date.now(),
+        name,
+        value: valueStr,
+        rawValue: parseInt(valueStr.replace(/\D/g, '')),
+        category,
+        rarity: currentRarity,
+        detectedLabel,
+        detectionConfidence,
+        image: stickerData,
+        original: capturedBlob,
+        created: new Date().toISOString()
+      };
+
+      const gallery = getGallery();
+      gallery.unshift(item);
+      if (!saveGallery(gallery)) return;
+
+      updateTotalValue();
+      showToast(`¡${name} guardado!`);
+      goTo('gallery');
+    });
+
+    document.getElementById('btnSaveFusion').addEventListener('click', () => {
+      if (!pendingFusion || !pendingFusion.rarity) return;
+
+      const { itemA, itemB, rarity, value } = pendingFusion;
+      const name = document.getElementById('fusionInputName').value.trim() || 'Brainroot sin nombre';
+      const valueStr = document.getElementById('fusionInputValue').value;
+      const canvas = document.getElementById('fusionCanvas');
+      const stickerData = canvas.toDataURL('image/png');
+
+      const newItem = {
+        id: Date.now(),
+        name,
+        value: valueStr,
+        rawValue: parseInt(valueStr.replace(/\D/g, '')) || value,
+        category: 'brainroot',
+        rarity,
+        detectedLabel: `${itemA.detectedLabel}+${itemB.detectedLabel}`,
+        detectionConfidence: Math.min(itemA.detectionConfidence || 0, itemB.detectionConfidence || 0),
+        type: 'brainroot',
+        parents: [itemA.id, itemB.id],
+        image: stickerData,
+        original: null,
+        created: new Date().toISOString()
+      };
+
+      // Los 2 objetos originales se conservan; solo se agrega el Brainroot
+      const gallery = getGallery();
+      gallery.unshift(newItem);
+      if (!saveGallery(gallery)) return;
+
+      updateTotalValue();
+      showToast(`¡${name} creado! Tus 2 objetos originales siguen en la galería. 🧬`);
+
+      pendingFusion = null;
+      goTo('gallery');
+    });
+
+    document.getElementById('btnDownloadFusion').addEventListener('click', () => {
+      const canvas = document.getElementById('fusionCanvas');
+      const name = document.getElementById('fusionInputName').value.trim() || 'brainroot';
+      downloadDataUrl(canvas.toDataURL('image/png'), sanitizeFilename(name) + '.png');
+    });
+
+    document.getElementById('btnShareFusion').addEventListener('click', () => {
+      const canvas = document.getElementById('fusionCanvas');
+      const name = document.getElementById('fusionInputName').value.trim() || 'Mi Brainroot';
+      shareImageDataUrl(canvas.toDataURL('image/png'), sanitizeFilename(name) + '.png', name);
+    });
+
+    document.getElementById('btnSaveHfToken').addEventListener('click', () => {
+      const val = document.getElementById('hfTokenInput').value.trim();
+      if (!val) { showToast('Pega un token válido'); return; }
+      localStorage.setItem(HF_TOKEN_KEY, val);
+
+      const modelVal = document.getElementById('hfModelInput').value.trim();
+      if (modelVal) {
+        localStorage.setItem(HF_MODEL_KEY, modelVal);
+      } else {
+        localStorage.removeItem(HF_MODEL_KEY);
+      }
+
+      showToast('Guardado. Se usará IA real en la próxima fusión.');
+      refreshHfSettingsUI();
+    });
+
+    document.getElementById('btnEditHfToken').addEventListener('click', () => {
+      document.getElementById('hfTokenInput').value = getHfToken();
+      document.getElementById('hfModelInput').value = localStorage.getItem(HF_MODEL_KEY) || '';
+      refreshHfSettingsUI(true);
+    });
+
+    function getGallery() {
+      try { return JSON.parse(localStorage.getItem(DB_KEY)) || []; } catch { return []; }
+    }
+
+    function updateTotalValue() {
+      const total = getGallery().reduce((sum, item) => sum + (item.rawValue || 0), 0);
+      document.getElementById('totalValue').textContent = formatMoney(total);
+    }
+
+    // ==================== GALLERY ====================
+    function renderGallery() {
+      const gallery = getGallery();
+      const grid = document.getElementById('galleryGrid');
+      const empty = document.getElementById('emptyState');
+      const toggleBtn = document.getElementById('btnFusionToggle');
+
+      updateTotalValue();
+      toggleBtn.disabled = gallery.length < 2 && !fusionMode;
+
+      if (gallery.length === 0) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      grid.innerHTML = gallery.map(item => {
+        const selected = fusionSelection.includes(item.id);
+        const selCls = fusionMode ? (selected ? ' selectable selected' : ' selectable') : '';
+        const isBrainroot = item.type === 'brainroot';
+        const cornerTag = fusionMode
+          ? `<div class="select-check">${selected ? '✓' : ''}</div>`
+          : (isBrainroot ? `<div class="brainroot-tag">BRAINROOT</div>` : '');
+        return `
+          <div class="gallery-item${selCls}" onclick="onGalleryItemClick(${item.id})">
+            <img src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">
+            ${cornerTag}
+            <div class="gallery-rarity ${item.rarity.class || 'rarity-common'}"></div>
+            <div class="gallery-info">
+              <div class="gallery-name">${escapeHtml(item.name)}</div>
+              <div class="gallery-value">${item.value}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (fusionMode) updateFusionBar();
+    }
+
+    function onGalleryItemClick(id) {
+      if (!fusionMode) { viewItem(id); return; }
+
+      const idx = fusionSelection.indexOf(id);
+      if (idx > -1) {
+        fusionSelection.splice(idx, 1);
+      } else {
+        if (fusionSelection.length >= 2) {
+          showToast('Solo puedes seleccionar 2 objetos');
+          return;
+        }
+        fusionSelection.push(id);
+      }
+      renderGallery();
+    }
+
+    let modalItem = null;
+
+    function viewItem(id) {
+      const item = getGallery().find(i => i.id === id);
+      if (!item) return;
+      openItemModal(item);
+    }
+
+    function openItemModal(item) {
+      modalItem = item;
+      document.getElementById('modalImg').src = item.image;
+      document.getElementById('modalName').textContent = item.name;
+      document.getElementById('modalValue').textContent = item.value;
+      document.getElementById('modalRarityBadge').textContent = item.rarity.name;
+      document.getElementById('modalRarityBadge').style.background = getRarityColor(item.rarity.name);
+      document.getElementById('itemModal').classList.remove('hidden');
+    }
+
+    function closeItemModal() {
+      document.getElementById('itemModal').classList.add('hidden');
+      modalItem = null;
+    }
+
+    document.getElementById('modalDownloadBtn').addEventListener('click', () => {
+      if (!modalItem) return;
+      downloadDataUrl(modalItem.image, sanitizeFilename(modalItem.name) + '.png');
+    });
+
+    document.getElementById('modalShareBtn').addEventListener('click', () => {
+      if (!modalItem) return;
+      shareImageDataUrl(modalItem.image, sanitizeFilename(modalItem.name) + '.png', modalItem.name);
+    });
+
+    document.getElementById('modalDeleteBtn').addEventListener('click', () => {
+      if (!modalItem) return;
+      const ok = confirm(`¿Eliminar "${modalItem.name}" de tu galería? Esta acción no se puede deshacer.`);
+      if (!ok) return;
+
+      const gallery = getGallery().filter(i => i.id !== modalItem.id);
+      if (!saveGallery(gallery)) return;
+
+      showToast(`"${modalItem.name}" eliminado`);
+      closeItemModal();
+      updateTotalValue();
+      renderGallery();
+    });
+
+    // ==================== COMPARTIR / DESCARGAR ====================
+    function sanitizeFilename(name) {
+      const clean = (name || 'combina2s')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      return clean || 'combina2s';
+    }
+
+    function downloadDataUrl(dataUrl, filename) {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // Comparte la imagen usando la Web Share API nativa (abre WhatsApp, Instagram,
+    // Facebook, TikTok, etc. como opciones del sistema en celulares). Si el navegador
+    // no soporta compartir archivos, descarga la imagen para que se comparta a mano.
+    async function shareImageDataUrl(dataUrl, filename, title) {
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: blob.type || 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: title || 'Combina2s',
+            text: `¡Mira mi Brainroot "${title || ''}" creado en Combina2s! 🧬`
+          });
+          return;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') return; // el usuario cerró el share sheet
+        console.warn('No se pudo compartir con la API nativa:', err);
+      }
+
+      downloadDataUrl(dataUrl, filename);
+      showToast('Tu navegador no permite compartir directo — se descargó la imagen para subirla a mano', 5000);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================== FUSIÓN / BRAINROOT ====================
+    function toggleFusionMode() {
+      const gallery = getGallery();
+      if (!fusionMode && gallery.length < 2) {
+        showToast('Necesitas al menos 2 objetos para fusionar');
+        return;
+      }
+      fusionMode = !fusionMode;
+      fusionSelection = [];
+
+      const toggleBtn = document.getElementById('btnFusionToggle');
+      toggleBtn.classList.toggle('active', fusionMode);
+      toggleBtn.textContent = fusionMode ? '✕ Cancelar' : '🧬 Fusionar';
+      document.getElementById('fusionBar').classList.toggle('hidden', !fusionMode);
+
+      renderGallery();
+      if (fusionMode) updateFusionBar();
+    }
+
+    function updateFusionBar() {
+      document.getElementById('fusionCount').textContent = fusionSelection.length;
+      document.getElementById('btnDoFuse').disabled = fusionSelection.length !== 2;
+    }
+
+    function confirmFusionSelection() {
+      if (fusionSelection.length !== 2) return;
+      const gallery = getGallery();
+      const itemA = gallery.find(i => i.id === fusionSelection[0]);
+      const itemB = gallery.find(i => i.id === fusionSelection[1]);
+      if (!itemA || !itemB) return;
+
+      pendingFusion = { itemA, itemB };
+
+      // Salir del modo selección antes de navegar
+      fusionMode = false;
+      fusionSelection = [];
+      const toggleBtn = document.getElementById('btnFusionToggle');
+      toggleBtn.classList.remove('active');
+      toggleBtn.textContent = '🧬 Fusionar';
+      document.getElementById('fusionBar').classList.add('hidden');
+
+      goTo('fusion');
+      runFusion(itemA, itemB);
+    }
+
+    function cancelFusionResult() {
+      pendingFusion = null;
+      goTo('gallery');
+    }
+
+    function refreshHfSettingsUI(forceEdit) {
+      const hasToken = !!getHfToken() && !forceEdit;
+      const form = document.getElementById('hfSettingsForm');
+      const saved = document.getElementById('hfSettingsSaved');
+      if (!form || !saved) return;
+      form.classList.toggle('hidden', hasToken);
+      saved.classList.toggle('hidden', !hasToken);
+      const modelLabel = document.getElementById('hfModelLabel');
+      if (modelLabel) modelLabel.textContent = 'Modelo: ' + getHfModel();
+      if (!hasToken) {
+        const modelInput = document.getElementById('hfModelInput');
+        if (modelInput && !modelInput.value) modelInput.placeholder = DEFAULT_HF_MODEL;
+      }
+    }
+
+    async function runFusion(itemA, itemB) {
+      document.getElementById('fusionThumbA').src = itemA.image;
+      document.getElementById('fusionThumbB').src = itemB.image;
+      document.getElementById('fusionDetected').textContent = 'Combinando objetos...';
+      document.getElementById('fusionInputName').value = '';
+      document.getElementById('fusionInputValue').value = '';
+      document.getElementById('btnSaveFusion').disabled = true;
+      refreshHfSettingsUI();
+
+      // 1) Versión cómica local: instantánea, funciona sin internet
+      await generateBrainrootSticker(itemA, itemB);
+
+      // 2) Si hay token de Hugging Face, intentar mejorar con IA real (caricatura)
+      if (getHfToken()) {
+        document.getElementById('fusionDetected').textContent = '🤖 Generando caricatura con IA...';
+        const { blob: aiBlob, error: aiError } = await aiCartoonizeFusion(itemA, itemB);
+        if (aiBlob) {
+          await drawBlobToFusionCanvas(aiBlob);
+          showToast('¡Caricatura generada con IA! 🎨');
+        } else {
+          console.warn('Detalle del error de IA:', aiError);
+          showToast('IA falló: ' + (aiError || 'error desconocido') + ' — se usó el modo local', 6000);
+        }
+      }
+
+      finishFusionStats(itemA, itemB);
+    }
+
+    function finishFusionStats(itemA, itemB) {
+      const rarity = fuseRarity(itemA.rarity, itemB.rarity);
+      const value = fuseValue(itemA, itemB, rarity);
+      const name = generateBrainrootName(itemA, itemB);
+
+      document.getElementById('fusionInputName').value = name;
+      document.getElementById('fusionInputValue').value = formatMoney(value);
+      document.getElementById('fusionRarityBadge').textContent = rarity.name;
+      document.getElementById('fusionRarityBadge').style.background = getRarityColor(rarity.name);
+
+      const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel;
+      const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel;
+      document.getElementById('fusionDetected').textContent = `${esA} + ${esB}`;
+
+      pendingFusion.rarity = rarity;
+      pendingFusion.value = value;
+      document.getElementById('btnSaveFusion').disabled = false;
+      document.getElementById('btnDownloadFusion').disabled = false;
+      document.getElementById('btnShareFusion').disabled = false;
+    }
+
+    // Dibuja ojos, nariz, boca, brazos y piernas de cómic sobre el canvas (size x size)
+    function drawComicFace(ctx, size) {
+      const cx = size / 2;
+      const eyeY = size * 0.38;
+      const eyeDX = size * 0.16;
+      const eyeR = size * 0.09;
+
+      [-1, 1].forEach(dir => {
+        const ex = cx + dir * eyeDX;
+        ctx.beginPath();
+        ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = size * 0.012;
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(ex + dir * eyeR * 0.15, eyeY + eyeR * 0.1, eyeR * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(ex + dir * eyeR * 0.35, eyeY - eyeR * 0.2, eyeR * 0.15, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      });
+
+      // Nariz
+      ctx.beginPath();
+      ctx.ellipse(cx, size * 0.5, size * 0.035, size * 0.045, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fill();
+
+      // Boca (sonrisa)
+      ctx.beginPath();
+      ctx.arc(cx, size * 0.56, size * 0.11, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.lineWidth = size * 0.02;
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Brazos y manos
+      ctx.lineWidth = size * 0.03;
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineCap = 'round';
+      [-1, 1].forEach(dir => {
+        ctx.beginPath();
+        ctx.moveTo(cx + dir * size * 0.28, size * 0.7);
+        ctx.quadraticCurveTo(cx + dir * size * 0.46, size * 0.78, cx + dir * size * 0.42, size * 0.92);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx + dir * size * 0.42, size * 0.92, size * 0.035, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
+      });
+
+      // Piernas y pies
+      [-1, 1].forEach(dir => {
+        ctx.beginPath();
+        ctx.moveTo(cx + dir * size * 0.1, size * 0.94);
+        ctx.lineTo(cx + dir * size * 0.14, size * 0.99);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx + dir * size * 0.14, size * 0.99, size * 0.025, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fill();
+      });
+    }
+
+    function generateBrainrootSticker(itemA, itemB) {
+      return new Promise((resolve) => {
+        const imgA = new Image();
+        const imgB = new Image();
+        let loaded = 0;
+
+        const onBoth = () => {
+          loaded++;
+          if (loaded < 2) return;
+
+          const size = STICKER_SIZE;
+          const c = document.getElementById('fusionCanvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.clearRect(0, 0, size, size);
+
+          const r = 60;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.lineTo(size - r, 0);
+          ctx.quadraticCurveTo(size, 0, size, r);
+          ctx.lineTo(size, size - r);
+          ctx.quadraticCurveTo(size, size, size - r, size);
+          ctx.lineTo(r, size);
+          ctx.quadraticCurveTo(0, size, 0, size - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+          ctx.save();
+          ctx.clip();
+
+          // Mitad izquierda: objeto A
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, size / 2, size);
+          ctx.clip();
+          ctx.drawImage(imgA, 0, 0, size, size);
+          ctx.restore();
+
+          // Mitad derecha: objeto B
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(size / 2, 0, size / 2, size);
+          ctx.clip();
+          ctx.drawImage(imgB, 0, 0, size, size);
+          ctx.restore();
+
+          // Costura brillante central
+          const seam = ctx.createLinearGradient(size / 2 - 20, 0, size / 2 + 20, 0);
+          seam.addColorStop(0, 'rgba(155,89,182,0)');
+          seam.addColorStop(0.5, 'rgba(155,89,182,0.9)');
+          seam.addColorStop(1, 'rgba(155,89,182,0)');
+          ctx.fillStyle = seam;
+          ctx.fillRect(size / 2 - 20, 0, 40, size);
+
+          // Cara y extremidades cómicas
+          drawComicFace(ctx, size);
+
+          ctx.restore();
+
+          ctx.save();
+          ctx.shadowColor = 'rgba(155,89,182,0.6)';
+          ctx.shadowBlur = 24;
+          ctx.shadowOffsetY = 8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 16;
+          ctx.stroke();
+          ctx.restore();
+
+          const grad = ctx.createLinearGradient(0, 0, size, size);
+          grad.addColorStop(0, 'rgba(255,255,255,0.15)');
+          grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = grad;
+          ctx.fill();
+
+          resolve();
+        };
+
+        imgA.onload = onBoth;
+        imgB.onload = onBoth;
+        imgA.src = itemA.image;
+        imgB.src = itemB.image;
+      });
+    }
+
+    // Compone las 2 fotos originales lado a lado para enviarlas a la IA de edición de imágenes
+    function drawCover(ctx, img, dx, dy, dw, dh) {
+      const scale = Math.max(dw / img.width, dh / img.height);
+      const sw = dw / scale, sh = dh / scale;
+      const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+      ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
+
+    function buildReferenceComposite(itemA, itemB) {
+      return new Promise((resolve) => {
+        const imgA = new Image();
+        const imgB = new Image();
+        let loaded = 0;
+        const onBoth = () => {
+          loaded++;
+          if (loaded < 2) return;
+          const w = 768, h = 384;
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          drawCover(ctx, imgA, 0, 0, w / 2, h);
+          drawCover(ctx, imgB, w / 2, 0, w / 2, h);
+          c.toBlob(blob => resolve(blob), 'image/jpeg', 0.9);
+        };
+        imgA.onload = onBoth;
+        imgB.onload = onBoth;
+        imgA.src = itemA.original || itemA.image;
+        imgB.src = itemB.original || itemB.image;
+      });
+    }
+
+    // Llama a Hugging Face Inference Providers (gratis con token personal) para
+    // convertir la fusión en una caricatura cómica real. Devuelve null si falla
+    // (sin token, sin internet, modelo no disponible, etc.) y el juego sigue
+    // funcionando con la versión cómica local generada por Canvas.
+    async function aiCartoonizeFusion(itemA, itemB) {
+      const token = getHfToken();
+      if (!token) return { blob: null, error: 'Sin token configurado' };
+
+      try {
+        const refBlob = await buildReferenceComposite(itemA, itemB);
+        const { InferenceClient } = await import('https://esm.sh/@huggingface/inference');
+        const hf = new InferenceClient(token);
+
+        const esA = LABEL_ES[itemA.detectedLabel] || itemA.detectedLabel || 'objeto';
+        const esB = LABEL_ES[itemB.detectedLabel] || itemB.detectedLabel || 'objeto';
+
+        const prompt = `Turn this into a single funny comic mascot character that fuses a ${esA} and a ${esB}. Add a cartoon comic face with big expressive eyes, a nose, a smiling mouth, plus simple cartoon arms and legs with hands and feet. Flat bold colors, thick black outlines, comic sticker style, plain white background, centered, full body visible.`;
+
+        const resultBlob = await hf.imageToImage({
+          inputs: refBlob,
+          parameters: { prompt },
+          model: getHfModel()
+        });
+
+        if (!resultBlob) return { blob: null, error: 'El proveedor no devolvió una imagen' };
+        return { blob: resultBlob, error: null };
+      } catch (err) {
+        console.error('Fusión con IA falló (detalle completo):', err);
+        let msg = err && err.message ? err.message : String(err);
+        if (err && err.response) {
+          try {
+            msg += ` [HTTP ${err.response.status || '?'}]`;
+          } catch (e) {}
+        }
+        return { blob: null, error: msg };
+      }
+    }
+
+    function drawBlobToFusionCanvas(blob) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const size = STICKER_SIZE;
+          const c = document.getElementById('fusionCanvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.clearRect(0, 0, size, size);
+
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+
+          const r = 60;
+          ctx.beginPath();
+          ctx.moveTo(r, 0);
+          ctx.lineTo(size - r, 0);
+          ctx.quadraticCurveTo(size, 0, size, r);
+          ctx.lineTo(size, size - r);
+          ctx.quadraticCurveTo(size, size, size - r, size);
+          ctx.lineTo(r, size);
+          ctx.quadraticCurveTo(0, size, 0, size - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+          ctx.restore();
+
+          ctx.save();
+          ctx.shadowColor = 'rgba(155,89,182,0.6)';
+          ctx.shadowBlur = 24;
+          ctx.shadowOffsetY = 8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 16;
+          ctx.stroke();
+          ctx.restore();
+
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        img.src = url;
+      });
+    }
+
+    function fuseRarity(rarityA, rarityB) {
+      const idxA = RARITY_TABLE.findIndex(r => r.name === rarityA.name);
+      const idxB = RARITY_TABLE.findIndex(r => r.name === rarityB.name);
+      let idx = Math.round((idxA + idxB) / 2);
+
+      const upgradeChance = 20 + (idxA + idxB) * 8;
+      if (Math.random() * 100 < upgradeChance && idx < RARITY_TABLE.length - 1) idx++;
+
+      idx = Math.max(0, Math.min(idx, RARITY_TABLE.length - 1));
+      return RARITY_TABLE[idx];
+    }
+
+    function fuseValue(itemA, itemB, rarity) {
+      const combined = (itemA.rawValue || 0) + (itemB.rawValue || 0);
+      const idx = RARITY_TABLE.findIndex(r => r.name === rarity.name);
+      const multiplier = [0.9, 1.15, 1.5, 2.2][idx];
+      return Math.round(combined * multiplier * (0.9 + Math.random() * 0.3));
+    }
+
+    function generateBrainrootName(itemA, itemB) {
+      const word = BRAINROOT_WORDS[Math.floor(Math.random() * BRAINROOT_WORDS.length)];
+      const partA = (itemA.name || 'Objeto').split(' ')[0];
+      const partB = (itemB.name || 'Objeto').split(' ')[0];
+      return `${word} ${partA}-${partB}`;
+    }
+
+    // ==================== NOTIFICATIONS ====================
+    async function requestBattle() {
+      if (!('Notification' in window)) {
+        showToast('Tu navegador no soporta notificaciones');
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        showToast('¡Notificaciones activadas!');
+        setTimeout(() => {
+          new Notification('Combina2s', {
+            body: '¡Tu oponente hizo su movimiento! Es tu turno de atacar.',
+            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🥊</text></svg>'
+          });
+        }, 2000);
+      } else {
+        showToast('Activa las notificaciones para jugar por turnos.');
+      }
+    }
+
+    // ==================== UTILS ====================
+    function showToast(msg, duration) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.classList.remove('show'), duration || 3000);
+    }
+
+    // ==================== INIT ====================
+    loadModel();
+    startCamera();
+    updateTotalValue();
+
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) e.preventDefault();
+      lastTouchEnd = now;
+    }, false);
+  </script>
+</body>
+</html>
